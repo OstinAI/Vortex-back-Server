@@ -1,19 +1,15 @@
 FROM python:3.10-slim
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Ставим зависимости для системы
+RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Попробуем скопировать всё сразу, чтобы не возникало ошибок с отдельными файлами
+# Шаг 1: Копируем ВООБЩЕ ВСЁ, что есть в папке
 COPY . .
 
-# Устанавливаем зависимости из файла, который теперь точно в корне
-RUN pip install --no-cache-dir -r requirements.txt
+# Шаг 2: Смотрим, что реально видит Docker (это появится в логах, если упадет)
+RUN ls -la
 
-ENV PORT 8080
-EXPOSE 8080
-
-# Проверьте, что Server.py лежит в корне репозитория (не в папке)
-CMD ["python", "Server.py"]
+# Шаг 3: Устанавливаем зависимости (используем маску *.txt на случай ошибки в имени)
+RUN pip install --no-cache-dir -r requirements*
