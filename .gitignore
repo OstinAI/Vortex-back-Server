@@ -1,0 +1,5 @@
+.vs/
+envServerV2/
+__pycache__/
+*.zip
+*.exe

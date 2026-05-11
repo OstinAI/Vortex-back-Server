@@ -1,0 +1,155 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>d92218ee-6a64-4365-95a0-e7882d0f1891</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>Server.py</StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>Server</Name>
+    <RootNamespace>Server</RootNamespace>
+    <InterpreterId>MSBuild|envServerV2|$(MSBuildProjectFullPath)</InterpreterId>
+    <SuppressPackageInstallationPrompt>True</SuppressPackageInstallationPrompt>
+    <SuppressConfigureTestFrameworkPrompt>true</SuppressConfigureTestFrameworkPrompt>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="db\connection.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="db\init.py" />
+    <Compile Include="db\models.py" />
+    <Compile Include="server\extensions.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="login\init.py" />
+    <Compile Include="login\login.py" />
+    <Compile Include="Server.py" />
+    <Compile Include="server\app.py" />
+    <Compile Include="server\Bot\greeting.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\Automator\actions.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\Automator\automator_bp.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\Automator\conditions.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\Automator\engine.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\Automator\init.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\Automator\worker.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\card_bp.py" />
+    <Compile Include="server\crm\clients_bp.py" />
+    <Compile Include="server\crm\fields_bp.py" />
+    <Compile Include="server\crm\init.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\pipelines_bp.py" />
+    <Compile Include="server\crm\routing_bp.py" />
+    <Compile Include="server\crm\settings_bp.py" />
+    <Compile Include="server\crm\__init__.py" />
+    <Compile Include="server\department\department_bp.py" />
+    <Compile Include="server\department\regions_bp.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\department\__init__.py" />
+    <Compile Include="server\employees.py" />
+    <Compile Include="server\files.py" />
+    <Compile Include="server\mail\imap_client.py" />
+    <Compile Include="server\mail\mail_bp.py" />
+    <Compile Include="server\mail\models_mail.py" />
+    <Compile Include="server\mail\smtp_client.py" />
+    <Compile Include="server\mail\store.py" />
+    <Compile Include="server\mail\test_mail.py" />
+    <Compile Include="server\mail\watcher.py" />
+    <Compile Include="server\mail\__init__.py" />
+    <Compile Include="server\notes\notes_bp.py" />
+    <Compile Include="server\tasks\tasks_bp.py" />
+    <Compile Include="server\update.py" />
+    <Compile Include="server\upload.py" />
+    <Compile Include="server\warehouse\inventory_bp.py" />
+    <Compile Include="server\Weather\routes.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\Weather\Weather.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\Weather\weather_logic.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\Weather\__init__.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\whatsapp\whatsapp_proxy.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\whatsapp\whatsapp_proxy_bp.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\whatsapp\__init__.py" />
+    <Compile Include="utils\crypto.py" />
+    <Compile Include="utils\hashing.py" />
+    <Compile Include="utils\init.py" />
+    <Compile Include="utils\security.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="db\" />
+    <Folder Include="login\" />
+    <Folder Include="server\crm\" />
+    <Folder Include="server\crm\Automator\" />
+    <Folder Include="server\department\" />
+    <Folder Include="server\mail\" />
+    <Folder Include="server\Bot\" />
+    <Folder Include="server\Weather\" />
+    <Folder Include="server\notes\" />
+    <Folder Include="server\tasks\" />
+    <Folder Include="server\updates\" />
+    <Folder Include="server\uploads\" />
+    <Folder Include="server\warehouse\" />
+    <Folder Include="server\whatsapp\" />
+    <Folder Include="utils\" />
+    <Folder Include="server\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="server\updates\version.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Interpreter Include="envServerV2\">
+      <Id>envServerV2</Id>
+      <Version>3.12</Version>
+      <Description>envServerV2 (Python 3.12 (64-bit))</Description>
+      <InterpreterPath>Scripts\python.exe</InterpreterPath>
+      <WindowsInterpreterPath>Scripts\pythonw.exe</WindowsInterpreterPath>
+      <PathEnvironmentVariable>PYTHONPATH</PathEnvironmentVariable>
+      <Architecture>X64</Architecture>
+    </Interpreter>
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Uncomment the CoreCompile target to enable the Build command in
+       Visual Studio and specify your pre- and post-build commands in
+       the BeforeBuild and AfterBuild targets below. -->
+  <!--<Target Name="CoreCompile" />-->
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+</Project>
