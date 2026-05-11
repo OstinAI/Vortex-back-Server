@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Исправляем путь: берем файл из папки Server
-COPY Server/requirements.txt .
+COPY Server/ .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем всё содержимое папки Server прямо в /app
