@@ -15,4 +15,6 @@ ENV PORT 8080
 EXPOSE 8080
 
 # ЗАПУСКАЕМ ВАШ ФАЙЛ app.py
-CMD ["python", "server/app.py"]
+# Вместо CMD ["python", "server/app.py"]
+# Мы говорим gunicorn запустить приложение, используя eventlet для сокетов
+CMD exec gunicorn --bind :$PORT --workers 1 --worker-class eventlet --threads 8 'server.app:app'
