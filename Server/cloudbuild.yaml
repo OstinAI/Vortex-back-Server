@@ -1,17 +1,16 @@
 steps:
   # 1. Собираем образ
-  # Важно: последний аргумент 'Server' говорит Docker искать файлы внутри этой папки
   - name: 'gcr.io/cloud-builders/docker'
     args: [
       'build', 
-      '-t', 'gcr.io/$PROJECT_ID/vortex-back-server', 
+      '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/vortex-back-server', 
       '-f', 'Server/Dockerfile', 
       'Server'
     ]
 
-  # 2. Пушим образ в реестр
+  # 2. Пушим образ (теперь в Artifact Registry)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/vortex-back-server']
+    args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/vortex-back-server']
 
   # 3. Деплоим в Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -21,13 +20,12 @@ steps:
       - 'deploy'
       - 'vortex-back-server'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/vortex-back-server'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/vortex-back-server'
       - '--region'
       - 'europe-west1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
 
-# Эта настройка убирает ошибку с логированием, которую мы видели ранее
 options:
   logging: CLOUD_LOGGING_ONLY
