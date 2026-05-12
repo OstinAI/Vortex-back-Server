@@ -4,18 +4,15 @@ RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/
 
 WORKDIR /app
 
-# 1. Теперь Docker ищет файл прямо в контексте (которым является папка Server)
+# Копируем зависимости
 COPY requirements.txt .
-
-# 2. Устанавливаем зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 3. Копируем ВСЁ содержимое текущей папки (Server/) в /app
-# Больше не пишем COPY Server/ ., так как мы уже "внутри" неё
+# Копируем всё содержимое папки Server в /app
 COPY . .
 
 ENV PORT 8080
 EXPOSE 8080
 
-# Убедись, что файл называется Server.py (с большой буквы, как на скрине)
-CMD ["python", "Server.py"]
+# ЗАПУСКАЕМ ВАШ ФАЙЛ app.py
+CMD ["python", "server/app.py"]
