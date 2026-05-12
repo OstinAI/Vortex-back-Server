@@ -1,0 +1,27 @@
+steps:
+  # Собираем образ. Контекст - корень (.), Dockerfile - в папке Server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/vortex-back-server', '-f', 'Server/Dockerfile', '.']
+
+  # Отправляем образ в реестр
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/vortex-back-server']
+
+  # Деплоим в Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'vortex-back-server'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/vortex-back-server'
+      - '--region'
+      - 'europe-west1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+
+# ЭТА СТРОКА УБИВАЕТ ТВОЮ ОШИБКУ:
+options:
+  logging: CLOUD_LOGGING_ONLY
