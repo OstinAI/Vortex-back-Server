@@ -92,16 +92,14 @@ def create_app():
     return app
 
 if __name__ == '__main__':
-    app = create_app()
-    
-    # 1. Считываем порт, который дал Google Cloud. Если его нет — используем 8080.
+    # Считываем порт, который дал Google Cloud. Если его нет — используем 8080.
     run_port = int(os.environ.get("PORT", 8080))
     
-    # 2. Передаем этот порт в socketio.run
+    # Передаем этот порт в socketio.run
     socketio.run(
         app,
         host='0.0.0.0', 
-        port=run_port,  # ВАЖНО: здесь теперь переменная, а не 5000
+        port=run_port,
         debug=False,
         use_reloader=False,
         allow_unsafe_werkzeug=True
