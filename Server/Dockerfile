@@ -25,4 +25,4 @@ ENV PORT 8080
 
 # Запуск через gunicorn с использованием eventlet
 # Убираем --worker-class eventlet и оставляем надежные потоки
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 'server.server.app:app'
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 'server.app:app'
