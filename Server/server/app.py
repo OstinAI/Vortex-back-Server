@@ -90,6 +90,8 @@ def create_app():
         return send_from_directory(upload_dir, path)
 
     return app
+    
+app = create_app()
 
 if __name__ == '__main__':
     # Считываем порт, который дал Google Cloud. Если его нет — используем 8080.
