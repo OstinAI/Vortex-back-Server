@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /app/Server
 
 # Копируем твой обновленный список зависимостей
 COPY requirements.txt .
