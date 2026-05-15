@@ -24,4 +24,5 @@ ENV PYTHONUNBUFFERED=1
 ENV PORT 8080
 
 # Запуск через gunicorn с использованием eventlet
-CMD exec gunicorn --bind :$PORT --workers 1 --worker-class eventlet --threads 8 'server.app:app'
+# Убираем --worker-class eventlet и оставляем надежные потоки
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 'server.app:app'
