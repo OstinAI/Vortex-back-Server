@@ -26,4 +26,5 @@ ENV PORT 8080
 # Запуск через gunicorn с использованием eventlet
 # Убираем --worker-class eventlet и оставляем надежные потоки
 # Заходим в самую глубокую папку, где лежит app.py
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 --chdir /app/Server/server 'app:app'
+# Теперь Gunicorn сам вызовет функцию и инициализирует приложение
+CMD exec gunicorn --worker-class eventlet --workers 1 --bind :$PORT "server.app:create_app()"
