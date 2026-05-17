@@ -90,15 +90,18 @@ def create_app():
         return send_from_directory(upload_dir, path)
 
     return app
+    
+app = create_app()
 
 if __name__ == '__main__':
-    app = create_app()
-    # ✅ ВАЖНО: Заменяем app.run на socketio.run
-    # Без этого сокеты не будут работать в режиме реального времени
+    # Считываем порт, который дал Google Cloud. Если его нет — используем 8080.
+    run_port = int(os.environ.get("PORT", 8080))
+    
+    # Передаем этот порт в socketio.run
     socketio.run(
         app,
-        host='0.0.0.0',
-        port=5000,
+        host='0.0.0.0', 
+        port=run_port,
         debug=False,
         use_reloader=False,
         allow_unsafe_werkzeug=True
