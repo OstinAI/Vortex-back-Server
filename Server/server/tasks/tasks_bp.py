@@ -170,12 +170,31 @@ def create_task():
 
     s = get_session()
     try:
+        # 1. ПРОВЕРКА И КОРРЕКТИРОВКА CLIENT_ID БЕЗ ИЗМЕНЕНИЯ БД
         if client_id is not None and client_id > 0:
             c = s.query(Client).filter_by(id=int(client_id), company_id=int(company_id)).first()
             if not c:
                 return jsonify({"ok": False, "message": "CLIENT_NOT_FOUND"}), 404
         else:
-            client_id = None
+            # Ищем, создан ли уже системный клиент для этой компании
+            sys_client = s.query(Client).filter_by(
+                company_id=int(company_id), 
+                name="__SYSTEM_TASK_CLIENT__"
+            ).first()
+            
+            if sys_client:
+                client_id = sys_client.id
+            else:
+                # Если его ещё нет (самый первый запуск), создаем его на лету
+                sys_client = Client(
+                    company_id=int(company_id),
+                    name="__SYSTEM_TASK_CLIENT__",
+                    # Добавь сюда дефолтные обязательные поля модели Client, если они у тебя есть
+                    # например: phone="", email="" и т.д.
+                )
+                s.add(sys_client)
+                s.flush() # Получаем id нового клиента без коммита всей транзакции
+                client_id = sys_client.id
 
         if department_id:
             d = s.query(Department).filter_by(id=int(department_id), company_id=int(company_id)).first()
@@ -184,9 +203,10 @@ def create_task():
 
         now = _now_ms()
 
+        # 2. СОЗДАНИЕ ЗАДАЧИ — client_id теперь гарантированно существующее число
         row = Task(
              company_id=int(company_id),
-             client_id=int(client_id) if client_id is not None else None,
+             client_id=int(client_id),
              department_id=int(department_id) if department_id else None,
              created_by_user_id=int(creator_id) if creator_id else None,
              title=title,
