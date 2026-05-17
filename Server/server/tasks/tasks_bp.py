@@ -185,20 +185,19 @@ def create_task():
         now = _now_ms()
 
         row = Task(
-            company_id=int(company_id),
-            # Если клиента нет, пишем 0, чтобы строгая база в облаке не выдавала ошибку 500
-            client_id=int(client_id) if client_id is not None else 0,
-            department_id=int(department_id) if department_id else None,
-            created_by_user_id=int(creator_id) if creator_id else None,
-            title=title,
-            description=str(description or ""),
-            start_ts_ms=int(start_ts_ms),
-            end_ts_ms=int(end_ts_ms) if end_ts_ms is not None else None,
-            status=status,
-            priority=priority,
-            created_ts_ms=now,
-            updated_ts_ms=now,
-        )
+             company_id=int(company_id),
+             client_id=int(client_id) if client_id is not None else None,
+             department_id=int(department_id) if department_id else None,
+             created_by_user_id=int(creator_id) if creator_id else None,
+             title=title,
+             description=str(description or ""),
+             start_ts_ms=int(start_ts_ms),
+             end_ts_ms=int(end_ts_ms) if end_ts_ms is not None else None,
+             status=status,
+             priority=priority,
+             created_ts_ms=now,
+             updated_ts_ms=now,
+         )
         s.add(row)
         s.flush()
 
