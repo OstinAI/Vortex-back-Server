@@ -170,22 +170,12 @@ def create_task():
 
     s = get_session()
     try:
-        # 1. ПРОВЕРКА И КОРРЕКТИРОВКА CLIENT_ID ДЛЯ СТРОГОГО POSTGRES
         if client_id is not None and client_id > 0:
             c = s.query(Client).filter_by(id=int(client_id), company_id=int(company_id)).first()
             if not c:
                 return jsonify({"ok": False, "message": "CLIENT_NOT_FOUND"}), 404
         else:
-            # Задача создается без клиента. Так как Postgres требует реальный ID (NOT NULL + FK),
-            # мы автоматически найдем первого доступного клиента этой компании в базе.
-            fallback_client = s.query(Client).filter_by(company_id=int(company_id)).first()
-            
-            if fallback_client:
-                client_id = fallback_client.id
-            else:
-                # Если в базе компании ВООБЩЕ нет ни одного клиента, временно ставим 1, 
-                # но лучше чтобы хотя бы один тестовый клиент существовал.
-                client_id = 1
+            client_id = None
 
         if department_id:
             d = s.query(Department).filter_by(id=int(department_id), company_id=int(company_id)).first()
@@ -194,10 +184,9 @@ def create_task():
 
         now = _now_ms()
 
-        # 2. СОЗДАНИЕ ЗАДАЧИ С ГАРАНТИРОВАННО ВАЛИДНЫМ CLIENT_ID
         row = Task(
              company_id=int(company_id),
-             client_id=int(client_id),  # Теперь здесь всегда валидный ID из таблицы clients
+             client_id=int(client_id) if client_id is not None else None,
              department_id=int(department_id) if department_id else None,
              created_by_user_id=int(creator_id) if creator_id else None,
              title=title,
