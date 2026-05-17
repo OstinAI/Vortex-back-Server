@@ -58,9 +58,14 @@ def token_required(f):
     """
     Декоратор для маршрутов, где нужна авторизация по Bearer-токену.
     + Проверка блокировки компании и пользователя в БД.
+    + Автоматический пропуск CORS-запросов OPTIONS.
     """
     @wraps(f)
     def decorated(*args, **kwargs):
+        # ⭐ ДОБАВЛЕНО: Если это CORS preflight запрос от браузера, пропускаем его без проверки токена
+        if request.method == 'OPTIONS':
+            return jsonify({'status': 'success'}), 200
+
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
             return jsonify({'status': 'error', 'message': 'Token is missing'}), 401

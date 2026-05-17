@@ -196,16 +196,14 @@ def save_client_values(client_id: int):
         s.close()
 
 
-@crm_card_bp.route("/fields/reorder", methods=["POST"])
+# Измени методы в роуте: добавь "OPTIONS"
+@crm_card_bp.route("/fields/reorder", methods=["POST", "OPTIONS"])
 @token_required
 def reorder_fields():
-    """
-    Эндпоинт для перемещения/изменения порядка полей.
-    Ожидает body:
-    {
-      "field_ids": [12, 10, 11, 13]  <-- ID полей в новом порядке
-    }
-    """
+    # Если это CORS-проверка от браузера, сразу возвращаем 200
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 200
+
     payload = getattr(request, "user", None) or {}
     if str(payload.get("role") or "").strip().lower() == "observer":
         return jsonify({"ok": False, "message": "READ_ONLY"}), 403
@@ -219,19 +217,16 @@ def reorder_fields():
 
     s = get_session()
     try:
-        # Тянем из базы только те поля, которые принадлежат этой компании
         defs = s.query(CRMFieldDefinition).filter_by(company_id=company_id, is_enabled=True).all()
         defs_map = {int(f.id): f for f in defs}
 
-        # Пробегаемся по присланному списку и обновляем order_index
         for index, fid in enumerate(field_ids):
             fdef = defs_map.get(int(fid))
             if fdef:
-                fdef.order_index = index  # Присваиваем новый порядковый номер (0, 1, 2...)
+                fdef.order_index = index
 
         s.commit()
         return jsonify({"ok": True, "message": "FIELDS_REORDERED"}), 200
-
     except Exception as e:
         s.rollback()
         return jsonify({"ok": False, "message": "REORDER_FAILED", "error": str(e)}), 500
