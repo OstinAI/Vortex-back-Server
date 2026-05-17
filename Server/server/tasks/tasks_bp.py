@@ -170,15 +170,12 @@ def create_task():
 
     s = get_session()
     try:
-        # Если клиент передан и он больше 0, проверяем его в базе
         if client_id is not None and client_id > 0:
             c = s.query(Client).filter_by(id=int(client_id), company_id=int(company_id)).first()
             if not c:
                 return jsonify({"ok": False, "message": "CLIENT_NOT_FOUND"}), 404
         else:
-            # Если задача общая (на сотрудника), принудительно ставим 0. 
-            # Это спасет от ошибки NotNullViolation в PostgreSQL на сервере.
-            client_id = 0
+            client_id = None
 
         if department_id:
             d = s.query(Department).filter_by(id=int(department_id), company_id=int(company_id)).first()
@@ -187,21 +184,31 @@ def create_task():
 
         now = _now_ms()
 
-        # Создаем задачу. client_id теперь всегда будет числом (либо реальный ID, либо 0)
-        row = Task(
-             company_id=int(company_id),
-             client_id=int(client_id),
-             department_id=int(department_id) if department_id else None,
-             created_by_user_id=int(creator_id) if creator_id else None,
-             title=title,
-             description=str(description or ""),
-             start_ts_ms=int(start_ts_ms),
-             end_ts_ms=int(end_ts_ms) if end_ts_ms is not None else None,
-             status=status,
-             priority=priority,
-             created_ts_ms=now,
-             updated_ts_ms=now,
-         )
+        # Собираем параметры динамически. Ничего не удаляем из базовой логики.
+        task_kwargs = {
+            "company_id": int(company_id),
+            "department_id": int(department_id) if department_id else None,
+            "created_by_user_id": int(creator_id) if creator_id else None,
+            "title": title,
+            "description": str(description or ""),
+            "start_ts_ms": int(start_ts_ms),
+            "end_ts_ms": int(end_ts_ms) if end_ts_ms is not None else None,
+            "status": status,
+            "priority": priority,
+            "created_ts_ms": now,
+            "updated_ts_ms": now,
+        }
+
+        # ЕСЛИ клиент передан с фронта (из карточки клиента) -> пишем его ID
+        if client_id is not None and client_id > 0:
+            task_kwargs["client_id"] = int(client_id)
+        else:
+            # ЕСЛИ задача общая -> заставляем SQLAlchemy отправить DEFAULT в базу данных.
+            # Это закроет конфликты и с NOT NULL, и с ForeignKeyViolation!
+            from sqlalchemy import text
+            task_kwargs["client_id"] = text("DEFAULT")
+
+        row = Task(**task_kwargs)
         s.add(row)
         s.flush()
 
@@ -236,7 +243,7 @@ def create_task():
 
     except Exception as e:
         s.rollback()
-        # Снова выводим ошибку в message, чтобы в консоли браузера сразу увидеть, если Postgres найдет новую зацепку
+        # Оставляем детальный вывод, чтобы полностью контролировать ситуацию
         return jsonify({"ok": False, "message": f"ОШИБКА БАЗЫ: {str(e)}", "error": str(e)}), 500
     finally:
         s.close()
