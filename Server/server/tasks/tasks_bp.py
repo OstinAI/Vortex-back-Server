@@ -170,12 +170,15 @@ def create_task():
 
     s = get_session()
     try:
+        # Если клиент передан и он больше 0, проверяем его в базе
         if client_id is not None and client_id > 0:
             c = s.query(Client).filter_by(id=int(client_id), company_id=int(company_id)).first()
             if not c:
                 return jsonify({"ok": False, "message": "CLIENT_NOT_FOUND"}), 404
         else:
-            client_id = None
+            # Если задача общая (на сотрудника), принудительно ставим 0. 
+            # Это спасет от ошибки NotNullViolation в PostgreSQL на сервере.
+            client_id = 0
 
         if department_id:
             d = s.query(Department).filter_by(id=int(department_id), company_id=int(company_id)).first()
@@ -184,29 +187,21 @@ def create_task():
 
         now = _now_ms()
 
-        # Формируем словарь базовых параметров для задачи динамически, ничего не удаляя
-        task_kwargs = {
-            "company_id": int(company_id),
-            "department_id": int(department_id) if department_id else None,
-            "created_by_user_id": int(creator_id) if creator_id else None,
-            "title": title,
-            "description": str(description or ""),
-            "start_ts_ms": int(start_ts_ms),
-            "end_ts_ms": int(end_ts_ms) if end_ts_ms is not None else None,
-            "status": status,
-            "priority": priority,
-            "created_ts_ms": now,
-            "updated_ts_ms": now,
-        }
-
-        # Если мы создаём задачу из карточки клиента (client_id передан), добавляем его в параметры.
-        # Если создаём задачу на сотрудника без клиента, вообще не передаём это поле, чтобы Postgres не падал.
-        if client_id is not None and client_id > 0:
-            task_kwargs["client_id"] = int(client_id)
-
-        # Распаковываем аргументы в объект модели Task
-        row = Task(**task_kwargs)
-        
+        # Создаем задачу. client_id теперь всегда будет числом (либо реальный ID, либо 0)
+        row = Task(
+             company_id=int(company_id),
+             client_id=int(client_id),
+             department_id=int(department_id) if department_id else None,
+             created_by_user_id=int(creator_id) if creator_id else None,
+             title=title,
+             description=str(description or ""),
+             start_ts_ms=int(start_ts_ms),
+             end_ts_ms=int(end_ts_ms) if end_ts_ms is not None else None,
+             status=status,
+             priority=priority,
+             created_ts_ms=now,
+             updated_ts_ms=now,
+         )
         s.add(row)
         s.flush()
 
@@ -241,8 +236,8 @@ def create_task():
 
     except Exception as e:
         s.rollback()
-        # Возвращаем стандартный ответ ошибки бэкенда, так как проблема решена
-        return jsonify({"ok": False, "message": "CREATE_FAILED", "error": str(e)}), 500
+        # Снова выводим ошибку в message, чтобы в консоли браузера сразу увидеть, если Postgres найдет новую зацепку
+        return jsonify({"ok": False, "message": f"ОШИБКА БАЗЫ: {str(e)}", "error": str(e)}), 500
     finally:
         s.close()
 
