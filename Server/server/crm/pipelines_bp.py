@@ -202,6 +202,8 @@ def list_stages(pipeline_id: int):
                 "is_lost": bool(st.is_lost),
                 "is_enabled": bool(st.is_enabled),
                 "order_index": int(st.order_index or 0),
+                # 🟢 ВОТ ЭТО МЫ ДОБАВИЛИ: Если в базе пусто, отдаем наш любимый #00ffff
+                "color": st.color if getattr(st, 'color', None) else "#00ffff"
             })
         return jsonify({"ok": True, "stages": items}), 200
     finally:
@@ -224,6 +226,9 @@ def create_stage(pipeline_id: int):
     order_index = int(data.get("order_index") or 0)
     is_won = bool(data.get("is_won", False))
     is_lost = bool(data.get("is_lost", False))
+    
+    # 🟢 Забираем цвет из запроса или ставим дефолтный #00ffff
+    color = (data.get("color") or "#00ffff").strip()
 
     if not name:
         return jsonify({"ok": False, "message": "NAME_REQUIRED"}), 400
@@ -239,13 +244,22 @@ def create_stage(pipeline_id: int):
             is_won=is_won,
             is_lost=is_lost,
             is_enabled=True,
+            color=color, # 🟢 Сохраняем цвет в БД
             created_ts_ms=now,
             updated_ts_ms=now
         )
         s.add(st)
         s.commit()
 
-        return jsonify({"ok": True, "stage": {"id": int(st.id), "name": st.name}}), 200
+        # Также возвращаем цвет обратно фронтенду
+        return jsonify({
+            "ok": True, 
+            "stage": {
+                "id": int(st.id), 
+                "name": st.name,
+                "color": st.color
+            }
+        }), 200
 
     except Exception as e:
         s.rollback()
@@ -292,6 +306,10 @@ def update_stage(stage_id: int):
             st.is_won = bool(data.get("is_won"))
         if "is_lost" in data:
             st.is_lost = bool(data.get("is_lost"))
+            
+        # 🟢 ДОБАВЛЕНО: сохраняем цвет этапа в модель базы данных
+        if "color" in data:
+            st.color = (data.get("color") or "").strip() or None
 
         st.updated_ts_ms = _now_ms()
         s.commit()

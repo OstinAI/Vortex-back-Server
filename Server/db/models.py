@@ -842,6 +842,9 @@ class PipelineStage(Base):
     order_index = Column(Integer, default=0, nullable=False)
     is_enabled = Column(Boolean, default=True, nullable=False)
 
+    # 🟢 ДОБАВЛЯЕМ СТРОКУ ДЛЯ ХРАНЕНИЯ ЦВЕТА (например, "#00ffff")
+    color = Column(String(7), nullable=True)
+
     created_ts_ms = Column(BigInteger, default=0, index=True)
     updated_ts_ms = Column(BigInteger, default=0, index=True)
 
