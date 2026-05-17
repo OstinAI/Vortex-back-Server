@@ -232,7 +232,8 @@ def create_task():
 
     except Exception as e:
         s.rollback()
-        return jsonify({"ok": False, "message": "CREATE_FAILED", "error": str(e)}), 500
+        # Временно выводим настоящую ошибку в message, чтобы фронтенд её отобразил
+        return jsonify({"ok": False, "message": f"ОШИБКА БАЗЫ: {str(e)}", "error": str(e)}), 500
     finally:
         s.close()
 
