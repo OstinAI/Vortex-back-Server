@@ -186,7 +186,8 @@ def create_task():
 
         row = Task(
             company_id=int(company_id),
-            client_id=int(client_id) if client_id is not None else None,
+            # Если клиента нет, пишем 0, чтобы строгая база в облаке не выдавала ошибку 500
+            client_id=int(client_id) if client_id is not None else 0,
             department_id=int(department_id) if department_id else None,
             created_by_user_id=int(creator_id) if creator_id else None,
             title=title,
