@@ -29,3 +29,8 @@ eventlet>=0.33.0
 flask-socketio
 psycopg2-binary==2.9.9
 flask-cors
+google-api-core==2.30.3
+google-api-python-client==2.196.0
+google-auth==2.53.0
+google-auth-httplib2==0.4.0
+google-auth-oauthlib==1.4.0
