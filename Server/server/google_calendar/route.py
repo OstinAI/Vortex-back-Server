@@ -12,15 +12,13 @@ from db.connection import get_session
 from db.models import User
 from utils.security import token_required
 from utils.crypto import encrypt, decrypt
+from server.config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 
 google_calendar_bp = Blueprint('google_calendar', __name__)
 
 # Отключаем HTTPS только для локальной разработки (в продакшене убрать)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-# Читаем из переменных окружения
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 
 if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
     raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set")
@@ -33,6 +31,7 @@ GOOGLE_CLIENT_CONFIG = {
         "token_uri": "https://oauth2.googleapis.com/token",
     }
 }
+
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
 
