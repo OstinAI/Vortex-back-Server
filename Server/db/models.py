@@ -1,4 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
+import time
+
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint, BigInteger, Text, LargeBinary, Table, Float
 from sqlalchemy import Index
@@ -1011,3 +1013,16 @@ class AutomationJob(Base):
 
     created_ts_ms = Column(BigInteger, nullable=False, default=0)
     updated_ts_ms = Column(BigInteger, nullable=False, default=0)
+
+
+# ============================
+#  SYSTEM SETTINGS (Google keys etc)
+# ============================
+class SystemSetting(Base):
+    __tablename__ = 'system_settings'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(255), unique=True, nullable=False, index=True)
+    value = Column(Text, nullable=False)
+    created_ts_ms = Column(BigInteger, default=lambda: int(time.time() * 1000))
+    updated_ts_ms = Column(BigInteger, default=lambda: int(time.time() * 1000), onupdate=lambda: int(time.time() * 1000))
