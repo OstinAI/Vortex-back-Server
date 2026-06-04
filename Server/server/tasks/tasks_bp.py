@@ -32,7 +32,16 @@ def _role() -> str:
 
 def _clean_status(v: str) -> str:
     v = (v or "").strip().lower()
-    allowed = {"open", "in_progress", "done", "canceled"}
+    allowed = {
+        "open",           # Новая (Ждет)
+        "in_progress",    # В работе
+        "done",           # Завершена
+        "canceled",       # Отменена
+        "urgent",         # Срочно (оранжевый #FF4500)
+        "waiting",        # В ожидании (#696969)
+        "attention",      # Требует внимания (#FF00FF)
+        "overdue"         # Просрочена (#ff4d4d)
+    }
     return v if v in allowed else "open"
 
 def _clean_priority(v: str) -> str:
@@ -262,20 +271,22 @@ def create_task():
 @token_required
 def list_tasks():
     """
-    GET /api/tasks/?client_id=10&status=open&assigned_user_id=5&department_id=3&limit=200
+    GET /api/tasks/?client_id=10&status=open&assignee_id=5&assigned_user_id=5&department_id=3&limit=200
     """
     company_id = _company_id()
     role = _role()
     user_id = _user_id()
 
-    
     client_id = _int_or_none(request.args.get("client_id"))
     status = (request.args.get("status") or "").strip().lower()
-    assigned_user_id = _int_or_none(request.args.get("assigned_user_id"))
+    
+    # Исправляем баг: принимаем и assignee_id (с фронта), и старый assigned_user_id
+    assigned_user_id = _int_or_none(request.args.get("assignee_id")) or _int_or_none(request.args.get("assigned_user_id"))
+    
     department_id = _int_or_none(request.args.get("department_id"))
     limit = _int_or_none(request.args.get("limit")) or 200
     
-    print("[TASKS][ACL]", "company=", company_id, "role=", role, "user_id=", user_id, "client_id=", client_id)
+    print("[TASKS][ACL]", "company=", company_id, "role=", role, "user_id=", user_id, "client_id=", client_id, "assignee=", assigned_user_id)
 
     if limit < 1:
         limit = 1
@@ -298,7 +309,6 @@ def list_tasks():
         if department_id:
             q = q.filter(Task.department_id == int(department_id))
 
-        # ВАЖНО: assigned_user_id ограничим через пересечение, а не переписываем q join-ом
         if assigned_user_id:
             q = q.filter(
                 Task.id.in_(
@@ -316,6 +326,7 @@ def list_tasks():
 
         items = []
         for t in rows:
+            # Находим исполнителей задачи
             a_rows = (
                 s.query(TaskAssignee)
                  .filter_by(company_id=int(company_id), task_id=int(t.id))
@@ -323,9 +334,32 @@ def list_tasks():
             )
             a_ids = [int(a.user_id) for a in a_rows]
 
+            # --- ДОБАВЛЯЕМ ДАННЫЕ КЛИЕНТА ДЛЯ КАЛЕНДАРЯ ---
+            client_name = ""
+            is_system = False
+            
+            if t.client_id:
+                client_obj = s.query(Client).filter_by(id=int(t.client_id), company_id=int(company_id)).first()
+                if client_obj:
+                    if client_obj.name == "__SYSTEM_TASK_CLIENT__":
+                        is_system = True
+                    else:
+                        client_name = client_obj.name
+
+            # 🔥 ПОЛУЧАЕМ ИМЯ СОЗДАТЕЛЯ ЗАДАЧИ
+            # После получения a_ids, добавь:
+            created_by_name = ""
+            if t.created_by_user_id:
+                creator = s.query(User).filter_by(id=t.created_by_user_id, company_id=company_id).first()
+                if creator:
+                    created_by_name = creator.full_name or creator.username or f"ID:{t.created_by_user_id}"
+
+            
+
             items.append({
                 "id": int(t.id),
-                "client_id": int(t.client_id) if t.client_id else 0,
+                "client_id": int(t.client_id) if (t.client_id and not is_system) else 0,
+                "client_name": client_name,
                 "department_id": int(t.department_id) if t.department_id else None,
                 "title": t.title or "",
                 "description": t.description or "",
@@ -336,6 +370,10 @@ def list_tasks():
                 "assignees": a_ids,
                 "created_ts_ms": int(t.created_ts_ms or 0),
                 "updated_ts_ms": int(t.updated_ts_ms or 0),
+                # 🔥 ДОБАВЛЯЕМ ПОЛЯ СОЗДАТЕЛЯ
+                "created_by_name": created_by_name,
+                "created_by_user_id": t.created_by_user_id,
+                "google_event_id": t.google_event_id
             })
 
         return jsonify({"ok": True, "tasks": items}), 200
@@ -346,8 +384,6 @@ def list_tasks():
 @tasks_bp.route("/<int:task_id>", methods=["GET"])
 @token_required
 def get_task(task_id: int):
-
-   
     company_id = _company_id()
     s = get_session()
     try:
@@ -361,6 +397,13 @@ def get_task(task_id: int):
 
         a_rows = s.query(TaskAssignee).filter_by(company_id=int(company_id), task_id=int(t.id)).all()
         a_ids = [int(a.user_id) for a in a_rows]
+
+        # 🔥 ДОБАВЬ ЭТОТ БЛОК - получаем имя создателя
+        created_by_name = ""
+        if t.created_by_user_id:
+            creator = s.query(User).filter_by(id=t.created_by_user_id, company_id=company_id).first()
+            if creator:
+                created_by_name = creator.full_name or creator.username or f"ID:{t.created_by_user_id}"
 
         return jsonify({
             "ok": True,
@@ -377,7 +420,11 @@ def get_task(task_id: int):
                 "assignees": a_ids,
                 "created_ts_ms": int(t.created_ts_ms or 0),
                 "updated_ts_ms": int(t.updated_ts_ms or 0),
-            }
+                # 🔥 ДОБАВЬ ЭТИ ДВЕ СТРОКИ
+                "created_by_name": created_by_name,
+                "created_by_user_id": t.created_by_user_id,
+                "google_event_id": t.google_event_id
+                            }
         }), 200
     finally:
         s.close()
@@ -388,11 +435,16 @@ def get_task(task_id: int):
 def update_task(task_id: int):
     """
     POST /api/tasks/<id>
-    можно менять: title, description, start_ts_ms, end_ts_ms, status, priority, department_id
+    можно менять: title, description, start_ts_ms, end_ts_ms, status, priority, department_id, client_id, assignees
     """
     company_id = _company_id()
     data = request.get_json(silent=True) or {}
 
+    # 🔥 ДОБАВЬ ЭТУ СТРОКУ ДЛЯ ОТЛАДКИ
+    print(f"[DEBUG] Получен запрос на обновление задачи {task_id}")
+    print(f"[DEBUG] Данные: {data}")
+    print(f"[DEBUG] status из запроса: {data.get('status')}")
+    
     if (_role() or "").strip().lower() == "observer":
         return jsonify({"ok": False, "message": "READ_ONLY"}), 403
 
@@ -439,6 +491,30 @@ def update_task(task_id: int):
             else:
                 t.department_id = None
 
+        # ОБРАБОТКА CLIENT_ID
+        if "client_id" in data:
+            client_id = _int_or_none(data.get("client_id"))
+            if client_id is not None and client_id > 0:
+                c = s.query(Client).filter_by(id=int(client_id), company_id=int(company_id)).first()
+                if not c:
+                    return jsonify({"ok": False, "message": "CLIENT_NOT_FOUND"}), 404
+                t.client_id = int(client_id)
+            else:
+                t.client_id = None
+
+        # ОБНОВЛЕНИЕ ИСПОЛНИТЕЛЕЙ
+        if "assignees" in data:
+            assignees = data.get("assignees") or []
+            s.query(TaskAssignee).filter_by(company_id=company_id, task_id=task_id).delete()
+            for uid in assignees:
+                if uid and uid > 0:
+                    s.add(TaskAssignee(
+                        company_id=company_id,
+                        task_id=task_id,
+                        user_id=uid,
+                        created_ts_ms=_now_ms()
+                    ))
+                    
         t.updated_ts_ms = _now_ms()
         s.commit()
         return jsonify({"ok": True}), 200
@@ -539,5 +615,31 @@ def delete_task(task_id: int):
     except Exception as e:
         s.rollback()
         return jsonify({"ok": False, "message": "DELETE_FAILED", "error": str(e)}), 500
+    finally:
+        s.close()
+
+
+@tasks_bp.route("/<int:task_id>/google-event-id", methods=["POST"])
+@token_required
+def set_google_event_id(task_id: int):
+    company_id = _company_id()
+    data = request.get_json(silent=True) or {}
+    google_event_id = data.get("google_event_id")
+    
+    if not google_event_id:
+        return jsonify({"ok": False, "message": "google_event_id required"}), 400
+    
+    s = get_session()
+    try:
+        task = s.query(Task).filter_by(id=task_id, company_id=company_id).first()
+        if not task:
+            return jsonify({"ok": False, "message": "Task not found"}), 404
+        
+        task.google_event_id = google_event_id
+        s.commit()
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        s.rollback()
+        return jsonify({"ok": False, "message": str(e)}), 500
     finally:
         s.close()

@@ -74,6 +74,12 @@
     <Compile Include="server\department\__init__.py" />
     <Compile Include="server\employees.py" />
     <Compile Include="server\files.py" />
+    <Compile Include="server\google_calendar\route.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\google_calendar\__init__.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="server\mail\imap_client.py" />
     <Compile Include="server\mail\mail_bp.py" />
     <Compile Include="server\mail\models_mail.py" />
@@ -119,6 +125,7 @@
     <Folder Include="server\department\" />
     <Folder Include="server\mail\" />
     <Folder Include="server\Bot\" />
+    <Folder Include="server\google_calendar\" />
     <Folder Include="server\Weather\" />
     <Folder Include="server\notes\" />
     <Folder Include="server\tasks\" />

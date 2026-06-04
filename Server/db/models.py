@@ -98,6 +98,10 @@ class User(Base):
     department = relationship('Department', back_populates='users')
     regions = relationship("Region", secondary=user_regions, back_populates="users")
 
+    google_refresh_token = Column(Text, nullable=True)  # Храним зашифрованный токен
+    google_calendar_connected = Column(Boolean, default=False, nullable=False)
+    oauth_verifier = Column(String(255), nullable=True)
+
     def __repr__(self):
         return f'<User id={self.id} username={self.username!r} company_id={self.company_id}>'
 
@@ -478,6 +482,8 @@ class Task(Base):
     # статус / срочность (оба не обязательны)
     # status: "open" | "in_progress" | "done" | "canceled"
     status = Column(String(50), default="open", nullable=False, index=True)
+    
+    google_event_id = Column(String(255), nullable=True)
 
     # priority: "normal" | "urgent"
     priority = Column(String(50), default="normal", nullable=False, index=True)
