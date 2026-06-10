@@ -170,6 +170,7 @@ def create_task():
     priority = _clean_priority(data.get("priority"))
     department_id = _int_or_none(data.get("department_id"))
     assignees = data.get("assignees") or []
+    duration = data.get("duration") or 30  # ДОБАВЬ ЭТУ СТРОКУ
 
     if company_id <= 0:
         return jsonify({"ok": False, "message": "INVALID_COMPANY"}), 400
@@ -224,6 +225,7 @@ def create_task():
              end_ts_ms=int(end_ts_ms) if end_ts_ms is not None else None,
              status=status,
              priority=priority,
+             duration=duration,
              created_ts_ms=now,
              updated_ts_ms=now,
          )
@@ -368,6 +370,7 @@ def list_tasks():
                 "status": t.status or "open",
                 "priority": t.priority or "normal",
                 "assignees": a_ids,
+                 "duration": t.duration or 30,
                 "created_ts_ms": int(t.created_ts_ms or 0),
                 "updated_ts_ms": int(t.updated_ts_ms or 0),
                 # 🔥 ДОБАВЛЯЕМ ПОЛЯ СОЗДАТЕЛЯ
@@ -418,6 +421,7 @@ def get_task(task_id: int):
                 "status": t.status or "open",
                 "priority": t.priority or "normal",
                 "assignees": a_ids,
+                "duration": t.duration or 30,
                 "created_ts_ms": int(t.created_ts_ms or 0),
                 "updated_ts_ms": int(t.updated_ts_ms or 0),
                 # 🔥 ДОБАВЬ ЭТИ ДВЕ СТРОКИ
@@ -440,7 +444,6 @@ def update_task(task_id: int):
     company_id = _company_id()
     data = request.get_json(silent=True) or {}
 
-    # 🔥 ДОБАВЬ ЭТУ СТРОКУ ДЛЯ ОТЛАДКИ
     print(f"[DEBUG] Получен запрос на обновление задачи {task_id}")
     print(f"[DEBUG] Данные: {data}")
     print(f"[DEBUG] status из запроса: {data.get('status')}")
@@ -502,6 +505,10 @@ def update_task(task_id: int):
             else:
                 t.client_id = None
 
+        # ОБНОВЛЕНИЕ ДЛИТЕЛЬНОСТИ
+        if "duration" in data:
+            t.duration = int(data.get("duration") or 30)
+
         # ОБНОВЛЕНИЕ ИСПОЛНИТЕЛЕЙ
         if "assignees" in data:
             assignees = data.get("assignees") or []
@@ -524,6 +531,7 @@ def update_task(task_id: int):
         return jsonify({"ok": False, "message": "UPDATE_FAILED", "error": str(e)}), 500
     finally:
         s.close()
+    
 
 
 @tasks_bp.route("/<int:task_id>/assignees", methods=["POST"])

@@ -458,6 +458,8 @@ class CRMFieldValue(Base):
 class Task(Base):
     __tablename__ = "tasks"
 
+    duration = Column(Integer, default=30)
+    
     id = Column(Integer, primary_key=True)
 
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
