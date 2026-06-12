@@ -22,7 +22,80 @@ def _user_id() -> int:
     payload = getattr(request, "user", None) or {}
     return int(payload.get("user_id") or 0)
 
-
+# Поиск
+@crm_card_bp.route("/clients/<int:client_id>/fields", methods=["GET", "OPTIONS"])
+@token_required
+def get_client_fields(client_id: int):
+    """
+    GET /api/crm/clients/<client_id>/fields
+    Возвращает ВСЕ кастомные поля клиента (для поиска и отображения)
+    """
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 200
+        
+    company_id = _company_id()
+    
+    s = get_session()
+    try:
+        client = s.query(Client).filter_by(id=int(client_id), company_id=company_id).first()
+        if not client:
+            return jsonify({"ok": False, "message": "CLIENT_NOT_FOUND"}), 404
+        
+        # Получаем все значения полей для этого клиента
+        values = (
+            s.query(CRMFieldValue)
+            .filter(CRMFieldValue.company_id == company_id)
+            .filter(CRMFieldValue.client_id == int(client.id))
+            .all()
+        )
+        
+        # Получаем определения полей, чтобы знать их типы и названия
+        field_defs = (
+            s.query(CRMFieldDefinition)
+            .filter(CRMFieldDefinition.company_id == company_id)
+            .filter(CRMFieldDefinition.is_enabled == True)
+            .all()
+        )
+        defs_map = {int(f.id): f for f in field_defs}
+        
+        # Формируем ответ: все поля с их значениями
+        fields_data = []
+        for v in values:
+            fdef = defs_map.get(int(v.field_id))
+            if not fdef:
+                continue
+                
+            # Получаем значение в зависимости от типа
+            value = None
+            if fdef.type == "text" or fdef.type == "select":
+                value = v.value_text
+            elif fdef.type == "number":
+                value = v.value_number
+            elif fdef.type == "bool":
+                value = v.value_bool
+            elif fdef.type == "date":
+                value = v.value_ts_ms
+                
+            if value is not None and value != "":
+                fields_data.append({
+                    "field_id": int(v.field_id),
+                    "key": fdef.key,
+                    "title": fdef.title,
+                    "type": fdef.type,
+                    "value": value
+                })
+        
+        return jsonify({
+            "ok": True,
+            "fields": fields_data
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)}), 500
+    finally:
+        s.close()
+        
+        
 @crm_card_bp.route("/clients/<int:client_id>/card", methods=["GET"])
 @token_required
 def get_client_card(client_id: int):
