@@ -28,6 +28,7 @@ from server.crm.Automator.automator_bp import automator_bp
 from flask_cors import CORS  # <-- ДОБАВИТЬ ЭТО
 from server.extensions import socketio  # Импорт из нового файла
 from server.Weather.routes import weather_bp
+from server.telegram.telegram_bp import telegram_bp
 
 # ✅ proxy blueprint
 from server.whatsapp.whatsapp_proxy_bp import whatsapp_proxy_bp
@@ -74,6 +75,7 @@ def create_app():
     app.register_blueprint(regions_bp, url_prefix="/api/regions")
     app.register_blueprint(automator_bp, url_prefix="/api/crm")
     app.register_blueprint(weather_bp, url_prefix='/api/weather')
+    app.register_blueprint(telegram_bp, url_prefix="/api/telegram")
 
     start_watcher()
     start_automator_worker()
