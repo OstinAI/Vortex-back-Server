@@ -956,3 +956,25 @@ def board_stage_cards():
 
     finally:
         s.close()
+
+# создание клиента из канала телеграм
+def create_client_from_channel(session, company_id, channel, name, contact_value):
+    """Создать клиента из Telegram/WhatsApp и т.д."""
+    from db.models import Client, CRMChannelRoute
+    
+    # Находим маршрут для канала
+    route = session.query(CRMChannelRoute).filter_by(
+        company_id=company_id, channel=channel
+    ).first()
+    
+    client = Client(
+        company_id=company_id,
+        name=name or f"Клиент {contact_value}",
+        status="active",
+        created_ts_ms=int(time.time() * 1000),
+        pipeline_id=route.pipeline_id if route else None,
+        stage_id=route.stage_id if route else None
+    )
+    session.add(client)
+    session.flush()
+    return client

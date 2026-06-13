@@ -207,3 +207,26 @@ def set_limit():
 
     finally:
         session.close()
+
+
+@files_bp.route("/public/<int:file_id>", methods=["GET"])
+def download_public_file(file_id):
+    """Публичное скачивание файлов (без авторизации) - для Telegram изображений"""
+    session = get_session()
+    try:
+        row = session.query(StoredFile).filter_by(id=file_id).first()
+        if not row:
+            return jsonify({"status": "error", "message": "File not found"}), 404
+
+        from urllib.parse import quote
+        safe_name = quote(row.filename)
+
+        headers = {
+            "Content-Type": row.mime_type or "application/octet-stream",
+            "Content-Disposition": f"inline; filename*=UTF-8''{safe_name}",
+            "Cache-Control": "public, max-age=86400"
+        }
+
+        return Response(row.data, headers=headers)
+    finally:
+        session.close()

@@ -1028,3 +1028,67 @@ class SystemSetting(Base):
     value = Column(Text, nullable=False)
     created_ts_ms = Column(BigInteger, default=lambda: int(time.time() * 1000))
     updated_ts_ms = Column(BigInteger, default=lambda: int(time.time() * 1000), onupdate=lambda: int(time.time() * 1000))
+
+
+# Добавьте в конец файла models.py:
+
+# ============================
+#  TELEGRAM INTEGRATION
+# ============================
+
+class TelegramBot(Base):
+    __tablename__ = "telegram_bots"
+    
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    
+    bot_token = Column(String(512), nullable=False)  # зашифрованный токен
+    bot_username = Column(String(100), nullable=True)
+    bot_id_api = Column(BigInteger, nullable=True)
+    
+    is_active = Column(Boolean, default=True)
+    greeting_enabled = Column(Boolean, default=False)
+    greeting_text = Column(Text, default="")
+    crm_sync_enabled = Column(Boolean, default=True)
+    
+    created_ts_ms = Column(BigInteger, default=0)
+    
+    __table_args__ = (UniqueConstraint("company_id", name="uq_company_telegram_bot"),)
+
+
+class TelegramChat(Base):
+    __tablename__ = "telegram_chats"
+    
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    bot_id = Column(Integer, ForeignKey("telegram_bots.id"), nullable=False)
+    
+    telegram_chat_id = Column(BigInteger, nullable=False, index=True)
+    telegram_user_id = Column(BigInteger, nullable=True)
+    
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
+    
+    peer_name = Column(String(255), default="")
+    peer_avatar_url = Column(Text, nullable=True)  # ← ДОБАВИТЬ ЭТУ СТРОКУ
+    last_message_ts_ms = Column(BigInteger, default=0)
+    
+    __table_args__ = (UniqueConstraint("company_id", "bot_id", "telegram_chat_id", name="uq_tg_chat"),)
+
+
+class TelegramMessage(Base):
+    __tablename__ = "telegram_messages"
+    
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    chat_id = Column(Integer, ForeignKey("telegram_chats.id"), nullable=False, index=True)
+    
+    direction = Column(String(10), nullable=False)  # "in" / "out"
+    text = Column(Text, default="")
+    
+    # Поля для файлов
+    file_id = Column(Integer, ForeignKey("stored_files.id"), nullable=True)
+    file_name = Column(String(255), nullable=True)
+    file_mime = Column(String(100), nullable=True)
+    
+    telegram_msg_id = Column(BigInteger, nullable=True)
+    ts_ms = Column(BigInteger, default=0, index=True)

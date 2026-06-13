@@ -90,6 +90,9 @@
     <Compile Include="server\mail\__init__.py" />
     <Compile Include="server\notes\notes_bp.py" />
     <Compile Include="server\tasks\tasks_bp.py" />
+    <Compile Include="server\telegram\telegram_bp.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="server\update.py" />
     <Compile Include="server\upload.py" />
     <Compile Include="server\warehouse\inventory_bp.py" />
@@ -129,6 +132,7 @@
     <Folder Include="server\mail\" />
     <Folder Include="server\Bot\" />
     <Folder Include="server\google_calendar\" />
+    <Folder Include="server\telegram\" />
     <Folder Include="server\Weather\" />
     <Folder Include="server\notes\" />
     <Folder Include="server\tasks\" />
