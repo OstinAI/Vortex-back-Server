@@ -519,7 +519,6 @@ def sync_from_telegram():
 
 
 
-
 def save_telegram_message(bot, company_id, message):
     """Сохраняет сообщение из Telegram в базу данных (с поддержкой файлов и текста)"""
     session = get_session()
