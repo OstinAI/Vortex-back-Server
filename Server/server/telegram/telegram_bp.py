@@ -243,95 +243,18 @@ def telegram_webhook(bot_id):
         
         company_id = bot.company_id
         
+        # Обработка сообщения
         message = data.get("message")
-        if not message:
-            return "OK", 200
+        if message:
+            save_telegram_message(bot, company_id, message)
         
-        chat = message.get("chat", {})
-        telegram_chat_id = chat.get("id")
-        from_user = message.get("from", {})
-        telegram_user_id = from_user.get("id")
-        peer_name = from_user.get("first_name", "") + " " + (from_user.get("last_name") or "")
-        text = message.get("text", "")
-        telegram_msg_id = message.get("message_id")
+        # Обработка callback_query (для кнопок)
+        callback = data.get("callback_query")
+        if callback:
+            message = callback.get("message")
+            if message:
+                save_telegram_message(bot, company_id, message)
         
-        # Ищем или создаём чат
-        tg_chat = session.query(TelegramChat).filter_by(
-            company_id=company_id,
-            bot_id=bot_id,
-            telegram_chat_id=telegram_chat_id
-        ).first()
-        
-        if not tg_chat:
-            tg_chat = TelegramChat(
-                company_id=company_id,
-                bot_id=bot_id,
-                telegram_chat_id=telegram_chat_id,
-                telegram_user_id=telegram_user_id,
-                peer_name=peer_name,
-                last_message_ts_ms=int(time.time() * 1000)
-            )
-            session.add(tg_chat)
-            session.flush()
-            
-            # Если включена CRM синхронизация — ищем или создаём клиента
-            if bot.crm_sync_enabled:
-                # Ищем клиента по Telegram ID
-                identity = session.query(ClientIdentity).filter_by(
-                    company_id=company_id,
-                    kind="telegram",
-                    value=str(telegram_user_id)
-                ).first()
-                
-                if identity:
-                    tg_chat.client_id = identity.client_id
-                else:
-                    # Создаём нового клиента
-                    # Находим маршрут для Telegram
-                    route = session.query(CRMChannelRoute).filter_by(
-                        company_id=company_id, channel="telegram"
-                    ).first()
-                    
-                    client = Client(
-                        company_id=company_id,
-                        name=peer_name or f"Клиент Telegram",
-                        status="active",
-                        created_ts_ms=int(time.time() * 1000),
-                        pipeline_id=route.pipeline_id if route else None,
-                        stage_id=route.stage_id if route else None
-                    )
-                    session.add(client)
-                    session.flush()
-                    
-                    # Создаём identity
-                    session.add(ClientIdentity(
-                        company_id=company_id,
-                        client_id=client.id,
-                        kind="telegram",
-                        value=str(telegram_user_id),
-                        created_ts_ms=int(time.time() * 1000)
-                    ))
-                    
-                    tg_chat.client_id = client.id
-                    
-                    # Отправляем приветствие, если включено
-                    if bot.greeting_enabled and bot.greeting_text:
-                        bot_token = decrypt(bot.bot_token)
-                        send_telegram_message(bot_token, telegram_chat_id, bot.greeting_text)
-        
-        # Обновляем last_message
-        tg_chat.last_message_ts_ms = int(time.time() * 1000)
-        
-        # Сохраняем сообщение
-        tg_msg = TelegramMessage(
-            company_id=company_id,
-            chat_id=tg_chat.id,
-            direction="in",
-            text=text,
-            telegram_msg_id=telegram_msg_id,
-            ts_ms=int(time.time() * 1000)
-        )
-        session.add(tg_msg)
         session.commit()
         
     except Exception as e:
@@ -464,125 +387,17 @@ def get_telegram_messages(chat_id):
 
 
 # ============================================
-# 6. СИНХРОНИЗАЦИЯ СООБЩЕНИЙ ИЗ TELEGRAM
-# ============================================
-@telegram_bp.route("/sync-from-telegram", methods=["POST"])
-@token_required
-def sync_from_telegram():
-    """Принудительная синхронизация сообщений из Telegram"""
-    company_id = _company_id()
-    
-    session = get_session()
-    try:
-        bot = session.query(TelegramBot).filter_by(company_id=company_id, is_active=True).first()
-        if not bot:
-            return jsonify({"status": "error", "message": "Bot not found. Please configure bot first."}), 404
-        
-        bot_token = decrypt(bot.bot_token)
-        
-        # Получаем обновления
-        resp = requests.get(f"https://api.telegram.org/bot{bot_token}/getUpdates", timeout=10)
-        data = resp.json()
-        
-        if not data.get("ok"):
-            return jsonify({"status": "error", "message": "Telegram API error", "details": data}), 500
-        
-        updates = data.get("result", [])
-        saved_chats = 0
-        saved_messages = 0
-        
-        for update in updates:
-            message = update.get("message")
-            if not message:
-                continue
-            
-            chat = message.get("chat", {})
-            telegram_chat_id = chat.get("id")
-            from_user = message.get("from", {})
-            telegram_user_id = from_user.get("id")
-            first_name = from_user.get("first_name", "")
-            last_name = from_user.get("last_name", "")
-            username = from_user.get("username", "")
-            peer_name = f"{first_name} {last_name}".strip() or username or f"User_{telegram_user_id}"
-            text = message.get("text", "")
-            telegram_msg_id = message.get("message_id")
-            
-            # Ищем или создаём чат
-            tg_chat = session.query(TelegramChat).filter_by(
-                company_id=company_id,
-                bot_id=bot.id,
-                telegram_chat_id=telegram_chat_id
-            ).first()
-            
-            if not tg_chat:
-                tg_chat = TelegramChat(
-                    company_id=company_id,
-                    bot_id=bot.id,
-                    telegram_chat_id=telegram_chat_id,
-                    telegram_user_id=telegram_user_id,
-                    peer_name=peer_name,
-                    last_message_ts_ms=int(time.time() * 1000)
-                )
-                session.add(tg_chat)
-                session.flush()
-                saved_chats += 1
-                print(f"✅ New chat created: {peer_name}")
-            
-            # Проверяем, нет ли уже такого сообщения
-            existing = session.query(TelegramMessage).filter_by(
-                chat_id=tg_chat.id,
-                telegram_msg_id=telegram_msg_id
-            ).first()
-            
-            if not existing and text:
-                tg_msg = TelegramMessage(
-                    company_id=company_id,
-                    chat_id=tg_chat.id,
-                    direction="in",
-                    text=text,
-                    telegram_msg_id=telegram_msg_id,
-                    ts_ms=int(time.time() * 1000)
-                )
-                session.add(tg_msg)
-                saved_messages += 1
-                print(f"✅ New message: {text[:50]}")
-            
-            tg_chat.last_message_ts_ms = int(time.time() * 1000)
-        
-        session.commit()
-        
-        return jsonify({
-            "status": "ok",
-            "updates_processed": len(updates),
-            "new_chats": saved_chats,
-            "new_messages": saved_messages
-        }), 200
-        
-    except Exception as e:
-        session.rollback()
-        print(f"❌ Sync error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        session.close()
-
-
-# ============================================
 # ЗАПУСК ПОЛЛИНГА ДЛЯ АВТОМАТИЧЕСКОГО ПОЛУЧЕНИЯ СООБЩЕНИЙ
 # ============================================
-# Глобальная переменная для хранения последнего обработанного update_id
-_last_processed_update_id = {}
 
 def start_telegram_polling():
     """Запуск polling в фоновом потоке для получения сообщений"""
     global _polling_started
     
-    # Защита от дублирования
     if _polling_started:
         print("⚠️ Polling already started, skipping duplicate")
         return
     _polling_started = True
-    
-    import threading
     
     def poll_worker():
         print("🚀 Telegram polling thread started")
@@ -598,13 +413,13 @@ def start_telegram_polling():
                         bot_token = decrypt(bot.bot_token)
                         company_id = bot.company_id
                         
-                        # Получаем последний обработанный update_id для этого бота
                         last_id = _last_processed_update_id.get(bot.id, 0)
                         
-                        url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
-                        params = {"offset": last_id + 1, "timeout": 30}
-                        
-                        resp = requests.get(url, params=params, timeout=35)
+                        resp = requests.get(
+                            f"https://api.telegram.org/bot{bot_token}/getUpdates",
+                            params={"offset": last_id + 1, "timeout": 30},
+                            timeout=35
+                        )
                         data = resp.json()
                         
                         if data.get("ok"):
@@ -615,15 +430,12 @@ def start_telegram_polling():
                                 for update in updates:
                                     message = update.get("message")
                                     if message:
-                                        telegram_msg_id = message.get("message_id")
-                                        if not is_message_already_saved(bot.id, telegram_msg_id):
-                                            save_telegram_message(bot, company_id, message)
+                                        save_telegram_message(bot, company_id, message)
                                 
                                 if max_update_id > last_id:
                                     _last_processed_update_id[bot.id] = max_update_id
                                     print(f"📌 Updated offset for bot {bot.id} to {max_update_id}")
                         elif data.get("error_code") == 409:
-                            # Просто логируем, но не спамим
                             pass
                         else:
                             print(f"⚠️ Telegram API error: {data}")
@@ -642,22 +454,70 @@ def start_telegram_polling():
     print("✅ Telegram polling started")
 
 
-def is_message_already_saved(bot_id, telegram_msg_id):
-    """Проверяет, сохранено ли уже сообщение"""
-    if not telegram_msg_id:
-        return True  # Если нет ID, пропускаем
+# ============================================
+# ЗАПУСК ПОЛЛИНГА ДЛЯ АВТОМАТИЧЕСКОГО ПОЛУЧЕНИЯ СООБЩЕНИЙ
+# ============================================
+# Глобальная переменная для хранения последнего обработанного update_id
+_last_processed_update_id = {}
+
+@telegram_bp.route("/sync-from-telegram", methods=["POST"])
+@token_required
+def sync_from_telegram():
+    """Принудительная синхронизация сообщений из Telegram"""
+    company_id = _company_id()
     
     session = get_session()
     try:
-        exists = session.query(TelegramMessage).filter_by(
-            telegram_msg_id=telegram_msg_id
-        ).first()
-        return exists is not None
+        bot = session.query(TelegramBot).filter_by(company_id=company_id, is_active=True).first()
+        if not bot:
+            return jsonify({"status": "error", "message": "Bot not found. Please configure bot first."}), 404
+        
+        bot_token = decrypt(bot.bot_token)
+        
+        # Получаем последний обработанный update_id
+        last_id = _last_processed_update_id.get(bot.id, 0)
+        
+        resp = requests.get(
+            f"https://api.telegram.org/bot{bot_token}/getUpdates",
+            params={"offset": last_id + 1, "timeout": 10},
+            timeout=15
+        )
+        data = resp.json()
+        
+        if not data.get("ok"):
+            return jsonify({"status": "error", "message": "Telegram API error", "details": data}), 500
+        
+        updates = data.get("result", [])
+        saved_messages = 0
+        
+        for update in updates:
+            message = update.get("message")
+            if message:
+                save_telegram_message(bot, company_id, message)
+                saved_messages += 1
+            
+            # Обновляем offset
+            update_id = update.get("update_id")
+            if update_id and update_id > _last_processed_update_id.get(bot.id, 0):
+                _last_processed_update_id[bot.id] = update_id
+        
+        session.commit()
+        
+        return jsonify({
+            "status": "ok",
+            "updates_processed": len(updates),
+            "new_messages": saved_messages
+        }), 200
+        
     except Exception as e:
-        print(f"Error checking message: {e}")
-        return True  # В случае ошибки лучше пропустить
+        session.rollback()
+        print(f"❌ Sync error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         session.close()
+
+
+
 
 
 def save_telegram_message(bot, company_id, message):
@@ -677,7 +537,7 @@ def save_telegram_message(bot, company_id, message):
         text = message.get("text", "") or message.get("caption", "") or ""
         telegram_msg_id = message.get("message_id")
         
-        # 🔥 СНАЧАЛА ищем или создаём чат
+        # Ищем или создаём чат
         tg_chat = session.query(TelegramChat).filter_by(
             company_id=company_id,
             bot_id=bot.id,
@@ -685,11 +545,9 @@ def save_telegram_message(bot, company_id, message):
         ).first()
         
         if not tg_chat:
-            # Получаем аватар пользователя
             bot_token = decrypt(bot.bot_token)
             peer_avatar_url = get_telegram_avatar(bot_token, telegram_user_id)
-            print(f"🖼️ Avatar URL for {telegram_user_id}: {peer_avatar_url}")  # ОТЛАДКА
-    
+            
             tg_chat = TelegramChat(
                 company_id=company_id,
                 bot_id=bot.id,
@@ -702,61 +560,62 @@ def save_telegram_message(bot, company_id, message):
             session.add(tg_chat)
             session.flush()
             print(f"✅ New chat created: {peer_name} (ID: {tg_chat.id})")
-        
-            # ========== ДОБАВИТЬ ЭТОТ БЛОК ==========
-        # Если включена CRM синхронизация — создаём клиента
-        if bot.crm_sync_enabled:
-            # Ищем клиента по Telegram ID
-            identity = session.query(ClientIdentity).filter_by(
-                company_id=company_id,
-                kind="telegram",
-                value=str(telegram_user_id)
-            ).first()
-        
-            if identity:
-                tg_chat.client_id = identity.client_id
-            else:
-                # Находим маршрут для Telegram
-                route = session.query(CRMChannelRoute).filter_by(
-                    company_id=company_id, channel="telegram"
-                ).first()
             
-                client = Client(
+            # Если включена CRM синхронизация — создаём клиента
+            if bot.crm_sync_enabled:
+                identity = session.query(ClientIdentity).filter_by(
                     company_id=company_id,
-                    name=peer_name or f"Клиент Telegram",
-                    status="active",
-                    created_ts_ms=int(time.time() * 1000),
-                    pipeline_id=route.pipeline_id if route else None,
-                    stage_id=route.stage_id if route else None
-                )
-                session.add(client)
-                session.flush()
-            
-                # Создаём identity
-                session.add(ClientIdentity(
-                    company_id=company_id,
-                    client_id=client.id,
                     kind="telegram",
-                    value=str(telegram_user_id),
-                    created_ts_ms=int(time.time() * 1000)
-                ))
-            
-                tg_chat.client_id = client.id
-                print(f"✅ New client created: {peer_name} (ID: {client.id}, pipeline: {route.pipeline_id if route else None})")
-        # ========================================
-        # 🔥 ПРОВЕРЯЕМ, есть ли уже такое сообщение в БД (ПО telegram_msg_id)
+                    value=str(telegram_user_id)
+                ).first()
+                
+                if identity:
+                    tg_chat.client_id = identity.client_id
+                else:
+                    route = session.query(CRMChannelRoute).filter_by(
+                        company_id=company_id, channel="telegram"
+                    ).first()
+                    
+                    client = Client(
+                        company_id=company_id,
+                        name=peer_name or f"Клиент Telegram",
+                        status="active",
+                        created_ts_ms=int(time.time() * 1000),
+                        pipeline_id=route.pipeline_id if route else None,
+                        stage_id=route.stage_id if route else None
+                    )
+                    session.add(client)
+                    session.flush()
+                    
+                    session.add(ClientIdentity(
+                        company_id=company_id,
+                        client_id=client.id,
+                        kind="telegram",
+                        value=str(telegram_user_id),
+                        created_ts_ms=int(time.time() * 1000)
+                    ))
+                    
+                    tg_chat.client_id = client.id
+                    print(f"✅ New client created: {peer_name} (ID: {client.id})")
+                    
+                    # Отправляем приветствие
+                    if bot.greeting_enabled and bot.greeting_text:
+                        bot_token = decrypt(bot.bot_token)
+                        send_telegram_message(bot_token, telegram_chat_id, bot.greeting_text)
+        
+        # Проверяем, есть ли уже такое сообщение
         existing = session.query(TelegramMessage).filter_by(
             telegram_msg_id=telegram_msg_id
         ).first()
         
         if existing:
-            print(f"⏭️ Message {telegram_msg_id} already exists, skipping")
-            # Всё равно обновляем время последнего сообщения в чате
+            # Обновляем время последнего сообщения
             tg_chat.last_message_ts_ms = int(time.time() * 1000)
             session.commit()
+            print(f"⏭️ Message {telegram_msg_id} already exists, skipping")
             return
         
-        # 🔥 ТОЛЬКО ЕСЛИ СООБЩЕНИЯ НЕТ - обрабатываем файлы
+        # Обрабатываем файлы
         file_id = None
         file_name = None
         file_mime = None
@@ -808,7 +667,7 @@ def save_telegram_message(bot, company_id, message):
             if not text:
                 text = "🎨 Стикер"
         
-        # Скачиваем файл ТОЛЬКО если он есть
+        # Скачиваем файл
         if file_id:
             try:
                 bot_token = decrypt(bot.bot_token)
@@ -839,7 +698,7 @@ def save_telegram_message(bot, company_id, message):
         print(f"❌ Error saving message: {e}")
     finally:
         session.close()
-
+        
 # ============================================
 # СКАЧИВАНИЕ И СОХРАНЕНИЕ ФАЙЛА ИЗ TELEGRAM
 # ============================================
@@ -1053,3 +912,10 @@ def send_telegram_message_api():
             return jsonify({"status": "error", "message": str(e)}), 500
         finally:
             session.close()
+
+# ============================================
+# АВТОЗАПУСК ПОЛЛИНГА ПРИ ЗАГРУЗКЕ
+# ============================================
+
+# Запускаем polling при импорте модуля
+start_telegram_polling()
