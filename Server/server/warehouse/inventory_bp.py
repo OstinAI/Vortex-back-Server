@@ -1842,7 +1842,7 @@ def sale_last_out():
 @token_required
 def sales_pay():
     company_id = _company_id()
-    user_id = _user_id()  # если нужно потом — пока не используем
+    user_id = _user_id()
 
     data = request.get_json(silent=True) or {}
     client_id = _int_or_none(data.get("client_id"))
@@ -1858,6 +1858,13 @@ def sales_pay():
 
     s = get_session()
     try:
+        now = _now_ms()
+        
+        # ✅ ПОЛУЧАЕМ updated_ts_ms ИЗ ЗАПРОСА, ЕСЛИ ОН ПЕРЕДАН
+        updated_ts = _int_or_none(data.get("updated_ts_ms"))
+        if updated_ts is None:
+            updated_ts = now
+        
         row = (
             s.query(SaleState)
              .filter(SaleState.company_id == int(company_id))
@@ -1865,12 +1872,16 @@ def sales_pay():
              .first()
         )
         if not row:
-            row = SaleState(company_id=int(company_id), client_id=int(client_id))
+            row = SaleState(
+                company_id=int(company_id), 
+                client_id=int(client_id),
+                created_ts_ms=now
+            )
             s.add(row)
 
         row.total_amount = float(total)
         row.paid_amount = float(paid)
-        row.updated_ts_ms = _now_ms()
+        row.updated_ts_ms = updated_ts  # ✅ ИСПОЛЬЗУЕМ ПЕРЕДАННУЮ ДАТУ
 
         s.commit()
         return jsonify({"ok": True}), 200
@@ -1921,32 +1932,53 @@ def sales_plan_month():
 
     is_full_access = role in ("admin", "integrator", "director", "president")
 
-    now = time.localtime()
-    month_start = int(time.mktime((now.tm_year, now.tm_mon, 1, 0, 0, 0, 0, 0, -1)) * 1000)
+    # =========================================================
+    # ✅ ПОЛУЧАЕМ ПАРАМЕТРЫ ИЗ ЗАПРОСА (год и месяц)
+    # =========================================================
+    try:
+        year = int(request.args.get("year", 0))
+        month = int(request.args.get("month", 0))
+    except:
+        year = 0
+        month = 0
 
-    if now.tm_mon == 12:
-        next_year = now.tm_year + 1
+    now = time.localtime()
+    
+    # Если год и месяц не переданы - используем текущие
+    if year <= 0:
+        year = now.tm_year
+    if month <= 0:
+        month = now.tm_mon
+
+    # Вычисляем начало и конец месяца
+    if month == 12:
+        next_year = year + 1
         next_month = 1
     else:
-        next_year = now.tm_year
-        next_month = now.tm_mon + 1
+        next_year = year
+        next_month = month + 1
 
+    month_start = int(time.mktime((year, month, 1, 0, 0, 0, 0, 0, -1)) * 1000)
     month_end = int(time.mktime((next_year, next_month, 1, 0, 0, 0, 0, 0, -1)) * 1000)
+
+    print(f"[DEBUG] Фильтр по дате: {year}-{month:02d}, с {month_start} по {month_end}")
 
     s = get_session()
     try:
         # =========================================================
-        # 1) ручные суммы сделки за месяц
+        # 1) Ручные суммы сделки за месяц
         # =========================================================
         manual_map = {}
 
         sale_rows = (
             s.query(SaleState)
              .filter(SaleState.company_id == int(company_id))
-             .filter(SaleState.updated_ts_ms >= month_start)
+             .filter(SaleState.created_ts_ms >= month_start)
              .filter(SaleState.updated_ts_ms < month_end)
              .all()
         )
+
+        print(f"[DEBUG] Найдено SaleState записей: {len(sale_rows)}")
 
         for row in sale_rows:
             client_id = int(row.client_id or 0)
@@ -1960,7 +1992,7 @@ def sales_plan_month():
             manual_map[client_id] += amount
 
         # =========================================================
-        # 2) товары со склада за месяц
+        # 2) Товары со склада за месяц
         # =========================================================
         goods_map = {}
 
@@ -1974,6 +2006,8 @@ def sales_plan_month():
              .filter(StockMovement.created_ts_ms < month_end)
              .all()
         )
+
+        print(f"[DEBUG] Найдено StockMovement записей: {len(stock_rows)}")
 
         for mv, product in stock_rows:
             client_id = int(mv.ref_id or 0)
@@ -2002,7 +2036,7 @@ def sales_plan_month():
             goods_map[client_id] += float(amount)
 
         # =========================================================
-        # 3) услуги за месяц
+        # 3) Услуги за месяц
         # =========================================================
         service_map = {}
 
@@ -2013,6 +2047,8 @@ def sales_plan_month():
              .filter(SaleServiceLine.created_ts_ms < month_end)
              .all()
         )
+
+        print(f"[DEBUG] Найдено SaleServiceLine записей: {len(service_rows)}")
 
         for row in service_rows:
             client_id = int(row.client_id or 0)
@@ -2028,8 +2064,7 @@ def sales_plan_month():
             service_map[client_id] += float(amount)
 
         # =========================================================
-        # 4) итог по клиенту:
-        #    ручная сумма + товары + услуги
+        # 4) Итог по клиенту
         # =========================================================
         client_ids = set()
         client_ids.update(manual_map.keys())
@@ -2046,7 +2081,7 @@ def sales_plan_month():
             client_totals[client_id] = manual_amount + goods_amount + service_amount
 
         # =========================================================
-        # 5) назначение суммы менеджеру сделки
+        # 5) Назначение суммы менеджеру сделки
         # =========================================================
         manager_totals = {}
         manager_name_map = {}
@@ -2119,7 +2154,7 @@ def sales_plan_month():
                     )
 
         # =========================================================
-        # 6) общий итог
+        # 6) Общий итог
         # =========================================================
         total_amount = 0.0
 
@@ -2139,15 +2174,20 @@ def sales_plan_month():
 
         managers.sort(key=lambda x: x["amount"], reverse=True)
 
+        print(f"[DEBUG] ИТОГО за {year}-{month:02d}: {total_amount}")
+
         return jsonify({
             "ok": True,
-            "year": int(now.tm_year),
-            "month": int(now.tm_mon),
+            "year": int(year),
+            "month": int(month),
             "total": float(total_amount),
             "managers": managers
         }), 200
 
     except Exception as e:
+        print(f"[ERROR] sales_plan_month: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "ok": False,
             "message": "PLAN_MONTH_FAILED",

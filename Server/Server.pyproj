@@ -29,6 +29,12 @@
     </Compile>
     <Compile Include="db\init.py" />
     <Compile Include="db\models.py" />
+    <Compile Include="server\crm\Automator\auto_import.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\crm\Automator\auto_import_bp.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="server\extensions.py">
       <SubType>Code</SubType>
     </Compile>
