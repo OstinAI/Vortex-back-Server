@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 
 from utils.security import token_required
 from db.connection import get_session
-from db.models import Client, ClientIdentity, ClientAssignment, CompanyCRMSettings, CRMChannelRoute, User, Note
+from db.models import Client, ClientIdentity, ClientAssignment, CompanyCRMSettings, CRMChannelRoute, User, Note, Company
 from db.models import PipelineStage
 from server.crm.Automator.engine import run_event
 from server.extensions import socketio # ИМПОРТИРУЙ ТОЛЬКО ОТСЮДА
@@ -19,6 +19,15 @@ def _now_ms() -> int:
 def _company_id() -> int:
     payload = getattr(request, "user", None) or {}
     return int(payload.get("company_id") or payload.get("companyId") or 0)
+
+def _user_id() -> int:
+    payload = getattr(request, "user", None) or {}
+    return int(payload.get("user_id") or 0)
+
+
+def _role() -> str:
+    payload = getattr(request, "user", None) or {}
+    return str(payload.get("role") or "")
 
 def _pick_route(s, company_id: int, channel: str):
     channel = (channel or "").strip().lower() or "manual"
@@ -978,3 +987,369 @@ def create_client_from_channel(session, company_id, channel, name, contact_value
     session.add(client)
     session.flush()
     return client
+
+# ===========================================
+# СОЗДАНИЕ КЛИЕНТА ИЗ КОМПАНИИ (ИСПРАВЛЕНО)
+# ===========================================
+
+@crm_clients_bp.route("/clients/from_company", methods=["POST", "OPTIONS"])
+@token_required
+def create_client_from_company():
+    """
+    Создать клиента в CRM из данных компании
+    body: { "company_id": 1, "pipeline_id": 1, "stage_id": 2 }
+    """
+    # CORS preflight
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 200
+    
+    payload = request.user
+    role = str(payload.get("role") or "")
+    user_company_id = int(payload.get("company_id") or payload.get("companyId") or 0)
+    
+    # Получаем имя компании пользователя
+    session = get_session()
+    try:
+        user_company = session.query(Company).filter_by(id=user_company_id).first()
+        if not user_company:
+            session.close()
+            return jsonify({"ok": False, "message": "USER_COMPANY_NOT_FOUND"}), 404
+        
+        user_company_name = user_company.name.lower()
+        
+        # Разрешаем доступ только для компании "Vortex" (регистронезависимо)
+        # ИЛИ для пользователей с ролью Integrator/Admin
+        is_vortex = "vortex" in user_company_name
+        is_admin = role in ("Integrator", "Admin")
+        
+        if not is_vortex and not is_admin:
+            session.close()
+            return jsonify({"ok": False, "message": "ACCESS_DENIED"}), 403
+        
+        data = request.get_json(silent=True) or {}
+        company_id = data.get("company_id")
+        pipeline_id = data.get("pipeline_id")
+        stage_id = data.get("stage_id")
+        
+        if not company_id or not pipeline_id or not stage_id:
+            session.close()
+            return jsonify({"ok": False, "message": "MISSING_PARAMS"}), 400
+        
+        # Получаем компанию, которую нужно импортировать
+        company = session.query(Company).filter_by(id=int(company_id)).first()
+        if not company:
+            session.close()
+            return jsonify({"ok": False, "message": "COMPANY_NOT_FOUND"}), 404
+        
+        # Получаем администратора компании для полей
+        admin = session.query(User).filter_by(company_id=company.id, role='Admin').first()
+        
+        # Создаем клиента (владелец - компания пользователя, т.е. Vortex)
+        client = Client(
+            company_id=user_company_id,  # Владелец клиента - компания пользователя
+            name=f"КОМПАНИЯ {company.name}",
+            pipeline_id=int(pipeline_id),
+            stage_id=int(stage_id),
+            status="active",
+            created_ts_ms=_now_ms()
+        )
+        session.add(client)
+        session.flush()
+        
+        # ============================================================
+        # СОЗДАЕМ КАСТОМНЫЕ ПОЛЯ ДЛЯ КЛИЕНТА
+        # ============================================================
+        from db.models import CRMFieldDefinition, CRMFieldValue
+        
+        # Поля компании
+        company_fields = {
+            'Название компании': company.name,
+            'Слоган': getattr(company, 'slogan', '') or '',
+            'БИН / ИИН': getattr(company, 'bin', '') or '',
+            'Телефон': getattr(company, 'phone', '') or '',
+            'Веб-сайт': getattr(company, 'website', '') or '',
+            'Адрес': getattr(company, 'address', '') or '',
+            'Логин администратора': admin.username if admin else '',
+            'Имя администратора': admin.full_name if admin else '',
+            'Email администратора': admin.email if admin else ''
+        }
+        
+        # Получаем существующие поля
+        existing_fields = session.query(CRMFieldDefinition).filter_by(
+            company_id=user_company_id,
+            scope_type='company',
+            scope_id=0,
+            is_enabled=True
+        ).all()
+        
+        field_map = {f.title: f.id for f in existing_fields}
+        values_to_save = []
+        
+        for title, value in company_fields.items():
+            if not value:
+                continue
+                
+            field_id = field_map.get(title)
+            
+            # Если поля нет, создаем его
+            if not field_id:
+                new_field = CRMFieldDefinition(
+                    company_id=user_company_id,
+                    scope_type='company',
+                    scope_id=0,
+                    key=f"company_{title.replace(' ', '_').lower()}",
+                    title=title,
+                    type='text',
+                    required=False,
+                    order_index=0,
+                    is_enabled=True,
+                    created_ts_ms=_now_ms()
+                )
+                session.add(new_field)
+                session.flush()
+                field_id = new_field.id
+                field_map[title] = field_id
+            
+            if field_id:
+                values_to_save.append({
+                    'field_id': field_id,
+                    'value': value
+                })
+        
+        # Сохраняем значения полей
+        for item in values_to_save:
+            existing_value = session.query(CRMFieldValue).filter_by(
+                company_id=user_company_id,
+                client_id=client.id,
+                field_id=item['field_id']
+            ).first()
+            
+            if existing_value:
+                existing_value.value_text = str(item['value'])
+                existing_value.updated_ts_ms = _now_ms()
+            else:
+                new_value = CRMFieldValue(
+                    company_id=user_company_id,
+                    client_id=client.id,
+                    field_id=item['field_id'],
+                    value_text=str(item['value']),
+                    updated_ts_ms=_now_ms()
+                )
+                session.add(new_value)
+        
+        # Сохраняем заметку
+        note = Note(
+            company_id=user_company_id,
+            client_id=client.id,
+            created_by_user_id=int(payload.get('user_id') or 0),
+            description=f"Импортирована из компании ID: {company_id}, название: {company.name}",
+            type="system",
+            created_ts_ms=_now_ms(),
+            updated_ts_ms=_now_ms()
+        )
+        session.add(note)
+        
+        # СОХРАНЯЕМ ДАННЫЕ ДО session.commit()
+        client_id = client.id
+        client_name = client.name
+        
+        session.commit()
+        session.close()
+        
+        return jsonify({
+            "ok": True, 
+            "client": {"id": client_id, "name": client_name}
+        }), 200
+        
+    except Exception as e:
+        session.rollback()
+        session.close()
+        print(f"[ERROR] create_client_from_company: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "message": str(e)}), 500
+
+# Добавьте в конец файла clients_bp.py
+
+@crm_clients_bp.route("/auto_import", methods=["POST"])
+@token_required
+def auto_import_companies():
+    """
+    Автоматический импорт новых компаний.
+    Используется для фоновой автоматизации.
+    """
+    payload = request.user
+    role = str(payload.get("role") or "")
+    user_company_id = int(payload.get("company_id") or payload.get("companyId") or 0)
+    
+    session = get_session()
+    try:
+        # Проверяем права
+        user_company = session.query(Company).filter_by(id=user_company_id).first()
+        if not user_company:
+            session.close()
+            return jsonify({"ok": False, "message": "COMPANY_NOT_FOUND"}), 404
+        
+        user_company_name = user_company.name.lower()
+        is_vortex = "vortex" in user_company_name
+        is_admin = role in ("Integrator", "Admin")
+        
+        if not is_vortex and not is_admin:
+            session.close()
+            return jsonify({"ok": False, "message": "ACCESS_DENIED"}), 403
+        
+        # Получаем параметры
+        data = request.get_json(silent=True) or {}
+        pipeline_id = data.get("pipeline_id")
+        stage_id = data.get("stage_id")
+        
+        if not pipeline_id or not stage_id:
+            session.close()
+            return jsonify({"ok": False, "message": "MISSING_PARAMS"}), 400
+        
+        # Получаем все компании
+        companies = session.query(Company).order_by(Company.id.asc()).all()
+        
+        # Получаем уже импортированные компании из CRM
+        from db.models import Client
+        clients = session.query(Client).filter_by(company_id=user_company_id).all()
+        
+        imported_names = set()
+        for client in clients:
+            if client.name and client.name.startswith('КОМПАНИЯ '):
+                imported_names.add(client.name.replace('КОМПАНИЯ ', '').upper())
+        
+        # Находим новые компании
+        new_companies = []
+        for c in companies:
+            if c.name.upper() not in imported_names:
+                new_companies.append(c)
+        
+        if not new_companies:
+            session.close()
+            return jsonify({"ok": True, "message": "NO_NEW_COMPANIES", "imported": 0}), 200
+        
+        # Импортируем новые компании
+        imported_count = 0
+        errors = []
+        
+        for company in new_companies:
+            try:
+                # Получаем администратора
+                admin = session.query(User).filter_by(company_id=company.id, role='Admin').first()
+                
+                # Создаем клиента
+                client = Client(
+                    company_id=user_company_id,
+                    name=f"КОМПАНИЯ {company.name}",
+                    pipeline_id=int(pipeline_id),
+                    stage_id=int(stage_id),
+                    status="active",
+                    created_ts_ms=_now_ms()
+                )
+                session.add(client)
+                session.flush()
+                
+                # Создаем поля
+                from db.models import CRMFieldDefinition, CRMFieldValue
+                
+                company_fields = {
+                    'Название компании': company.name,
+                    'Слоган': getattr(company, 'slogan', '') or '',
+                    'БИН / ИИН': getattr(company, 'bin', '') or '',
+                    'Телефон': getattr(company, 'phone', '') or '',
+                    'Веб-сайт': getattr(company, 'website', '') or '',
+                    'Адрес': getattr(company, 'address', '') or '',
+                    'Логин администратора': admin.username if admin else '',
+                    'Имя администратора': admin.full_name if admin else '',
+                    'Email администратора': admin.email if admin else ''
+                }
+                
+                existing_fields = session.query(CRMFieldDefinition).filter_by(
+                    company_id=user_company_id,
+                    scope_type='company',
+                    scope_id=0,
+                    is_enabled=True
+                ).all()
+                
+                field_map = {f.title: f.id for f in existing_fields}
+                
+                for title, value in company_fields.items():
+                    if not value:
+                        continue
+                        
+                    field_id = field_map.get(title)
+                    
+                    if not field_id:
+                        new_field = CRMFieldDefinition(
+                            company_id=user_company_id,
+                            scope_type='company',
+                            scope_id=0,
+                            key=f"company_{title.replace(' ', '_').lower()}",
+                            title=title,
+                            type='text',
+                            required=False,
+                            order_index=0,
+                            is_enabled=True,
+                            created_ts_ms=_now_ms()
+                        )
+                        session.add(new_field)
+                        session.flush()
+                        field_id = new_field.id
+                        field_map[title] = field_id
+                    
+                    if field_id:
+                        existing_value = session.query(CRMFieldValue).filter_by(
+                            company_id=user_company_id,
+                            client_id=client.id,
+                            field_id=field_id
+                        ).first()
+                        
+                        if existing_value:
+                            existing_value.value_text = str(value)
+                            existing_value.updated_ts_ms = _now_ms()
+                        else:
+                            new_value = CRMFieldValue(
+                                company_id=user_company_id,
+                                client_id=client.id,
+                                field_id=field_id,
+                                value_text=str(value),
+                                updated_ts_ms=_now_ms()
+                            )
+                            session.add(new_value)
+                
+                # Заметка
+                note = Note(
+                    company_id=user_company_id,
+                    client_id=client.id,
+                    created_by_user_id=int(payload.get('user_id') or 0),
+                    description=f"Автоматический импорт из компании ID: {company.id}, название: {company.name}",
+                    type="system",
+                    created_ts_ms=_now_ms(),
+                    updated_ts_ms=_now_ms()
+                )
+                session.add(note)
+                
+                imported_count += 1
+                
+            except Exception as e:
+                errors.append(f"{company.name}: {str(e)}")
+                print(f"[AUTO_IMPORT] Ошибка импорта {company.name}: {e}")
+        
+        session.commit()
+        session.close()
+        
+        return jsonify({
+            "ok": True,
+            "imported": imported_count,
+            "errors": errors,
+            "message": f"Импортировано {imported_count} компаний" + (f", ошибок: {len(errors)}" if errors else "")
+        }), 200
+        
+    except Exception as e:
+        session.rollback()
+        session.close()
+        print(f"[AUTO_IMPORT] Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "message": str(e)}), 500
