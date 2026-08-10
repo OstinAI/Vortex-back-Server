@@ -230,3 +230,33 @@ def download_public_file(file_id):
         return Response(row.data, headers=headers)
     finally:
         session.close()
+        
+# В files.py должен быть этот метод:
+@files_bp.route("/files/<int:file_id>", methods=["GET"])
+def download_file_by_id(file_id):
+    """Скачать файл из БД по ID (публичный доступ)"""
+    session = get_session()
+    try:
+        file_record = session.query(StoredFile).filter_by(id=file_id).first()
+        if not file_record:
+            return jsonify({"status": "error", "message": "File not found"}), 404
+        
+        from urllib.parse import quote
+        safe_name = quote(file_record.filename)
+        
+        headers = {
+            "Content-Type": file_record.mime_type or "application/octet-stream",
+            "Content-Disposition": f"inline; filename*=UTF-8''{safe_name}",
+            "Cache-Control": "public, max-age=86400"
+        }
+        
+        return Response(file_record.data, headers=headers)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        session.close()
+        
+@files_bp.route("/<int:file_id>", methods=["GET"])
+def download_file_by_id_short(file_id):
+    """Скачать файл из БД по ID (короткий URL)"""
+    return download_file_by_id(file_id)

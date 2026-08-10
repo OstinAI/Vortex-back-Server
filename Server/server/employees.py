@@ -8,7 +8,7 @@ from db.models import User, Company
 from utils.hashing import hash_password, make_client_hash
 from utils.security import token_required
 from server.mail.smtp_client import send_mail
-from db.models import MailAccount
+from db.models import User, Company, MailAccount
 from utils.crypto import decrypt
 
 employees_bp = Blueprint("employees", __name__)
@@ -441,3 +441,129 @@ def delete_employee():
 
     finally:
         session.close()
+
+# ===========================================
+# 5) Admin panel
+# ===========================================
+
+@employees_bp.route("/companies/list", methods=["GET"])
+@token_required
+def list_companies():
+    payload = request.user
+    company_id = int(payload.get("company_id") or payload.get("companyId") or 0)
+    role = str(payload.get("role") or "")
+    
+    session = get_session()
+    try:
+        # Получаем компанию пользователя
+        company = session.query(Company).filter_by(id=company_id).first()
+        if not company:
+            session.close()
+            return jsonify({"status": "error", "message": "COMPANY_NOT_FOUND"}), 404
+        
+        company_name = company.name.lower()
+        
+        # Проверяем: либо компания Vortex, либо пользователь Admin/Integrator
+        is_vortex = "vortex" in company_name
+        is_admin = role in ("Integrator", "Admin")
+        
+        if not is_vortex and not is_admin:
+            session.close()
+            return jsonify({"status": "error", "message": "ACCESS_DENIED"}), 403
+        
+        # Получаем все компании
+        companies = session.query(Company).order_by(Company.id.asc()).all()
+        
+        result = []
+        for c in companies:
+            admin = session.query(User).filter_by(
+                company_id=c.id, 
+                role='Admin'
+            ).first()
+            
+            integrator = session.query(User).filter_by(
+                company_id=c.id,
+                role='Integrator'
+            ).first()
+            
+            result.append({
+                "id": c.id,
+                "name": c.name,
+                "bin": getattr(c, 'bin', '') or '',
+                "phone": getattr(c, 'phone', '') or '',
+                "address": getattr(c, 'address', '') or '',
+                "website": getattr(c, 'website', '') or '',
+                "slogan": getattr(c, 'slogan', '') or '',
+                "admin_name": admin.full_name if admin else '',
+                "admin_login": admin.username if admin else '',
+                "admin_email": admin.email if admin else '',
+                "integrator_login": integrator.username if integrator else '',
+                "users_count": session.query(User).filter_by(company_id=c.id).count()
+            })
+        
+        session.close()
+        return jsonify({"status": "ok", "companies": result}), 200
+        
+    except Exception as e:
+        session.close()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# Добавьте в файл employees.py после функции list_companies
+
+@employees_bp.route("/companies/check_new", methods=["GET"])
+@token_required
+def check_new_companies():
+    """
+    Проверить, есть ли новые компании для импорта.
+    Возвращает список компаний, которых еще нет в CRM.
+    """
+    payload = request.user
+    role = str(payload.get("role") or "")
+    user_company_id = int(payload.get("company_id") or payload.get("companyId") or 0)
+    
+    session = get_session()
+    try:
+        # Проверяем права
+        user_company = session.query(Company).filter_by(id=user_company_id).first()
+        if not user_company:
+            session.close()
+            return jsonify({"status": "error", "message": "COMPANY_NOT_FOUND"}), 404
+        
+        user_company_name = user_company.name.lower()
+        is_vortex = "vortex" in user_company_name
+        is_admin = role in ("Integrator", "Admin")
+        
+        if not is_vortex and not is_admin:
+            session.close()
+            return jsonify({"status": "error", "message": "ACCESS_DENIED"}), 403
+        
+        # Получаем все компании
+        companies = session.query(Company).order_by(Company.id.asc()).all()
+        
+        # Получаем уже импортированные компании из CRM
+        from db.models import Client
+        clients = session.query(Client).filter_by(company_id=user_company_id).all()
+        
+        imported_names = set()
+        for client in clients:
+            if client.name and client.name.startswith('КОМПАНИЯ '):
+                imported_names.add(client.name.replace('КОМПАНИЯ ', '').upper())
+        
+        # Находим новые компании
+        new_companies = []
+        for c in companies:
+            if c.name.upper() not in imported_names:
+                new_companies.append({
+                    "id": c.id,
+                    "name": c.name,
+                    "bin": getattr(c, 'bin', '') or '',
+                    "phone": getattr(c, 'phone', '') or '',
+                })
+        
+        session.close()
+        return jsonify({"status": "ok", "companies": new_companies}), 200
+        
+    except Exception as e:
+        session.close()
+        return jsonify({"status": "error", "message": str(e)}), 500
+

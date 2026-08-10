@@ -2,7 +2,7 @@
 import time
 
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint, BigInteger, Text, LargeBinary, Table, Float
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint, BigInteger, Text, LargeBinary, Table, Float, Date
 from sqlalchemy import Index
 
 Base = declarative_base()
@@ -27,17 +27,65 @@ class Company(Base):
     name = Column(String(255), unique=True, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
 
-    storage_limit_mb = Column(Integer, default=100, nullable=False)      # лимит (МБ), можно менять
-    storage_used_bytes = Column(BigInteger, default=0, nullable=False)   # занято (байт)
+    storage_limit_mb = Column(Integer, default=100, nullable=False)
+    storage_used_bytes = Column(BigInteger, default=0, nullable=False)
+
+    # ========== ОСНОВНЫЕ ПОЛЯ ==========
+    bin = Column(String(255), nullable=True)           # БИН/ИИН (было 50)
+    phone = Column(String(255), nullable=True)         # Телефон (было 50)
+    address = Column(Text, nullable=True)              # Оставляем Text (не шифруется)
+    website = Column(String(255), nullable=True)
+    slogan = Column(Text, nullable=True)
+    president = Column(String(255), nullable=True)
+    postal_address = Column(String(500), nullable=True) # Почтовый адрес
+    company_email = Column(String(255), nullable=True)
+    president_email = Column(String(255), nullable=True)
+    reg_certificate = Column(String(255), nullable=True) # Свидетельство (было 100)
+
+    # ========== НОВЫЕ ПОЛЯ ==========
+    ownership_form = Column(String(50), nullable=True)
+    foundation_date = Column(Date, nullable=True)
+    oked_code = Column(String(20), nullable=True)
+    kbk_code = Column(String(20), nullable=True)
+    license_number = Column(String(255), nullable=True)   # Номер лицензии (было 100)
+    license_date = Column(Date, nullable=True)
+    actual_address = Column(String(500), nullable=True)   # Фактический адрес
+    instagram = Column(String(255), nullable=True)
+    facebook = Column(String(255), nullable=True)
+    linkedin = Column(String(255), nullable=True)
+    youtube = Column(String(255), nullable=True)
+    tiktok = Column(String(255), nullable=True)
+
+    reg_date = Column(Date, nullable=True)              # Дата регистрации
+    foundation_date = Column(Date, nullable=True)       # Дата основания
+    license_date = Column(Date, nullable=True)          # Дата выдачи лицензии
+
+    # Дополнительно
+    ceo_identification = Column(String(255), nullable=True)  # ИИН/БИН (было 50)
+    contact_person = Column(String(255), nullable=True)
+    contact_person_phone = Column(String(255), nullable=True) # Телефон (было 50)
+    contact_person_email = Column(String(255), nullable=True)
+    
+    # Изображения (храним пути к файлам)
+    logo_path = Column(String(500), nullable=True)            # Путь к логотипу
+    stamp_path = Column(String(500), nullable=True)           # Путь к печати
+    signature_path = Column(String(500), nullable=True)       # Путь к подписи
+    qr_code_path = Column(String(500), nullable=True)         # Путь к QR коду
+    # =====================================================
+    
+    logo_file_id = Column(Integer, ForeignKey("stored_files.id"), nullable=True)  # ID файла логотипа в БД
+
 
     users = relationship('User', back_populates='company')
+    # ... остальные отношения ...
     departments = relationship('Department', back_populates='company')
     regions = relationship("Region", back_populates="company")
     clients = relationship("Client", back_populates="company")
     crm_settings = relationship("CompanyCRMSettings", back_populates="company", uselist=False)
     pipelines = relationship("Pipeline", back_populates="company", cascade="all, delete-orphan")
     channel_routes = relationship("CRMChannelRoute", back_populates="company", cascade="all, delete-orphan")
-
+    
+    logo_file = relationship("StoredFile", foreign_keys=[logo_file_id])
 
     def __repr__(self):
         return f'<Company id={self.id} name={self.name!r}>'
@@ -256,7 +304,7 @@ class StoredFile(Base):
 
     created_ts_ms = Column(BigInteger, default=0, index=True)
 
-    company = relationship("Company")
+    company = relationship("Company", foreign_keys=[company_id])
 
 class Department(Base):
     __tablename__ = "departments"
@@ -903,6 +951,9 @@ class SaleState(Base):
     paid_amount = Column(Float, default=0.0, nullable=False)
 
     updated_ts_ms = Column(BigInteger, default=0, nullable=False)
+    
+    # ✅ ДОБАВИТЬ ЭТО ПОЛЕ
+    created_ts_ms = Column(BigInteger, default=0, nullable=False)
 
     __table_args__ = (
         UniqueConstraint("company_id", "client_id", name="uq_sale_state_company_client"),
@@ -1030,8 +1081,6 @@ class SystemSetting(Base):
     updated_ts_ms = Column(BigInteger, default=lambda: int(time.time() * 1000), onupdate=lambda: int(time.time() * 1000))
 
 
-# Добавьте в конец файла models.py:
-
 # ============================
 #  TELEGRAM INTEGRATION
 # ============================
@@ -1092,3 +1141,147 @@ class TelegramMessage(Base):
     
     telegram_msg_id = Column(BigInteger, nullable=True)
     ts_ms = Column(BigInteger, default=0, index=True)
+
+# ============================================
+# КОНТРАГЕНТЫ
+# ============================================
+
+class Counterparty(Base):
+    __tablename__ = 'counterparties'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
+    
+    # Увеличиваем размеры полей
+    president = Column(String(500), nullable=False)      # было 255
+    organization = Column(String(500), nullable=False)   # было 255
+    phone = Column(String(500), nullable=False)          # было 255
+    email = Column(String(500), nullable=False)          # было 255
+    type = Column(String(100), nullable=False)           # было 50
+    
+    bin = Column(String(500), nullable=True)             # было 50
+    address = Column(Text, nullable=True)                # было Text - оставляем
+    website = Column(String(500), nullable=True)         # было 255
+    notes = Column(Text, nullable=True)                  # было Text - оставляем
+    
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_ts_ms = Column(BigInteger, default=0, index=True)
+    updated_ts_ms = Column(BigInteger, default=0, index=True)
+    
+    company = relationship("Company")
+    custom_fields = relationship("CounterpartyCustomField", back_populates="counterparty", cascade="all, delete-orphan")
+    payment_fields = relationship("CounterpartyPaymentField", back_populates="counterparty", cascade="all, delete-orphan")
+
+
+class CounterpartyCustomField(Base):
+    __tablename__ = 'counterparty_custom_fields'
+    
+    id = Column(Integer, primary_key=True)
+    counterparty_id = Column(Integer, ForeignKey('counterparties.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
+    key = Column(String(120), nullable=False)
+    value = Column(Text, default="", nullable=False)
+    required = Column(Boolean, default=False, nullable=False)
+    
+    counterparty = relationship("Counterparty", back_populates="custom_fields")
+
+
+class CounterpartyPaymentField(Base):
+    __tablename__ = 'counterparty_payment_fields'
+    
+    id = Column(Integer, primary_key=True)
+    counterparty_id = Column(Integer, ForeignKey('counterparties.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
+    key = Column(String(120), nullable=False)
+    value = Column(Text, default="", nullable=False)
+    required = Column(Boolean, default=False, nullable=False)
+    
+    counterparty = relationship("Counterparty", back_populates="payment_fields")
+
+# ============================================
+# ДИСТРИБЬЮТОРЫ
+# ============================================
+
+class DistributorApplication(Base):
+    __tablename__ = 'distributor_applications'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
+    
+    # Данные компании-заявителя
+    company_name = Column(String(500), nullable=False)
+    bin = Column(String(500), nullable=False)
+    president = Column(String(500), nullable=False)
+    phone = Column(String(500), nullable=False)
+    email = Column(String(500), nullable=False)
+    address = Column(Text, nullable=False)
+    actual_address = Column(Text, nullable=True)
+    website = Column(String(500), nullable=True)
+    ownership_form = Column(String(100), nullable=True)
+    paypal_email = Column(String(500), nullable=False)
+    notes = Column(Text, nullable=True)
+    
+    # Статус заявки: pending | approved | rejected
+    status = Column(String(50), default='pending', nullable=False, index=True)
+    
+    # Кто одобрил/отклонил
+    reviewed_by_user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    reviewed_ts_ms = Column(BigInteger, nullable=True)
+    review_comment = Column(Text, nullable=True)
+    
+    # Дата подачи
+    created_ts_ms = Column(BigInteger, default=0, index=True)
+    updated_ts_ms = Column(BigInteger, default=0, index=True)
+    
+    company = relationship("Company", foreign_keys=[company_id])
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_user_id])
+
+
+class Distributor(Base):
+    __tablename__ = 'distributors'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey('distributor_applications.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
+    
+    # Данные дистрибьютора (копируются из заявки)
+    company_name = Column(String(500), nullable=False)
+    bin = Column(String(500), nullable=False)
+    president = Column(String(500), nullable=False)
+    phone = Column(String(500), nullable=False)
+    email = Column(String(500), nullable=False)
+    address = Column(Text, nullable=False)
+    actual_address = Column(Text, nullable=True)
+    website = Column(String(500), nullable=True)
+    ownership_form = Column(String(100), nullable=True)
+    paypal_email = Column(String(500), nullable=False)
+    
+    # Статистика
+    total_clients = Column(Integer, default=0, nullable=False)
+    total_commission = Column(Float, default=0.0, nullable=False)
+    
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_ts_ms = Column(BigInteger, default=0, index=True)
+    updated_ts_ms = Column(BigInteger, default=0, index=True)
+    
+    application = relationship("DistributorApplication", foreign_keys=[application_id])
+    company = relationship("Company", foreign_keys=[company_id])
+
+
+class DistributorCompanyLink(Base):
+    __tablename__ = 'distributor_company_links'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    distributor_id = Column(Integer, ForeignKey('distributors.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
+    
+    # Компания привязалась к дистрибьютору
+    linked_ts_ms = Column(BigInteger, default=0, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    
+    __table_args__ = (
+        UniqueConstraint('distributor_id', 'company_id', name='uq_distributor_company'),
+    )
+    
+    distributor = relationship("Distributor", foreign_keys=[distributor_id])
+    company = relationship("Company", foreign_keys=[company_id])
