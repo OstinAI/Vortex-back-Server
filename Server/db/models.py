@@ -17,6 +17,7 @@ user_regions = Table(
     Column("region_id", Integer, ForeignKey("regions.id"), primary_key=True),
 )
 
+
 # ============================
 #  COMPANY
 # ============================
