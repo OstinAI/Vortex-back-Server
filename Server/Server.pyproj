@@ -29,6 +29,21 @@
     </Compile>
     <Compile Include="db\init.py" />
     <Compile Include="db\models.py" />
+    <Compile Include="server\company\counterparty\counterparty_bp.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\company\counterparty\__init__.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\company\distributor\distributor_bp.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\company\distributor\__init__.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="server\company\requisite_bp.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="server\crm\Automator\auto_import.py">
       <SubType>Code</SubType>
     </Compile>
@@ -132,6 +147,10 @@
   <ItemGroup>
     <Folder Include="db\" />
     <Folder Include="login\" />
+    <Folder Include="server\company\" />
+    <Folder Include="server\company\counterparty\" />
+    <Folder Include="server\company\distributor\" />
+    <Folder Include="server\company\__pycache__\" />
     <Folder Include="server\crm\" />
     <Folder Include="server\crm\Automator\" />
     <Folder Include="server\department\" />
