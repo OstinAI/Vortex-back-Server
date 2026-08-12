@@ -3,7 +3,15 @@ import logging
 import os
 
 from flask import Flask, jsonify, send_from_directory
+from flask_cors import CORS
+from server.extensions import socketio
+
+# ✅ СНАЧАЛА импортируем все модели
 from db.connection import init_db
+from db.models import Base
+from db.connection import engine
+
+# Затем импортируем все блюпринты
 from login.login import login_bp
 from server.update import update_bp
 from server.employees import employees_bp
@@ -24,18 +32,12 @@ from server.notes.notes_bp import notes_bp
 from server.warehouse.inventory_bp import inventory_bp
 from server.department.regions_bp import regions_bp
 from server.crm.Automator.automator_bp import automator_bp
-
-from flask_cors import CORS  # <-- ДОБАВИТЬ ЭТО
-from server.extensions import socketio  # Импорт из нового файла
 from server.Weather.routes import weather_bp
 from server.telegram.telegram_bp import telegram_bp
-
 from server.crm.Automator.auto_import_bp import auto_import_bp
 from server.company.requisite_bp import requisite_bp
 from server.company.counterparty.counterparty_bp import counterparty_bp
 from server.company.distributor.distributor_bp import distributor_bp
-
-# ✅ proxy blueprint
 from server.whatsapp.whatsapp_proxy_bp import whatsapp_proxy_bp
 
 logging.basicConfig(
@@ -47,40 +49,31 @@ logging.basicConfig(
 def create_app():
     app = Flask(__name__)
     CORS(app)
-
-    # Привязываем сокеты к приложению
     socketio.init_app(app)
 
-    init_db()
-
-    from db.models import Base
-    from db.connection import engine
-    
-    def create_tables():
-        Base.metadata.create_all(bind=engine)
-        print("✅ Tables created successfully")
-    
-    create_tables()
-
-    # ✅ ОДИНАКОВЫЙ JWT СЕКРЕТ С WA-СЕРВЕРОМ
+    # ✅ JWT настройки (до блюпринтов)
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "CHANGE_ME")
     app.config["JWT_ALGORITHM"] = os.getenv("JWT_ALGORITHM", "HS256")
 
-    app.register_blueprint(login_bp,     url_prefix="/api/auth")
-    app.register_blueprint(update_bp,    url_prefix="/api/update")
+    # ✅ Инициализация БД ПОСЛЕ импорта всех моделей
+    with app.app_context():
+        init_db()
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables created successfully")
+
+    # Регистрация блюпринтов
+    app.register_blueprint(login_bp, url_prefix="/api/auth")
+    app.register_blueprint(update_bp, url_prefix="/api/update")
     app.register_blueprint(employees_bp, url_prefix="/api/employees")
-    app.register_blueprint(upload_bp,    url_prefix="/api/upload")
-    app.register_blueprint(mail_bp,      url_prefix="/api/mail")
-
-    # ✅ только proxy
+    app.register_blueprint(upload_bp, url_prefix="/api/upload")
+    app.register_blueprint(mail_bp, url_prefix="/api/mail")
     app.register_blueprint(whatsapp_proxy_bp, url_prefix="/api/whatsapp")
-
     app.register_blueprint(files_bp, url_prefix="/api/files")
     app.register_blueprint(departments_bp, url_prefix="/api/departments")
-    app.register_blueprint(crm_clients_bp,   url_prefix="/api/crm")
-    app.register_blueprint(crm_settings_bp,  url_prefix="/api/crm")
+    app.register_blueprint(crm_clients_bp, url_prefix="/api/crm")
+    app.register_blueprint(crm_settings_bp, url_prefix="/api/crm")
     app.register_blueprint(crm_fields_bp, url_prefix="/api/crm")
-    app.register_blueprint(crm_card_bp,   url_prefix="/api/crm")
+    app.register_blueprint(crm_card_bp, url_prefix="/api/crm")
     app.register_blueprint(pipelines_bp, url_prefix="/api/crm")
     app.register_blueprint(routing_bp, url_prefix="/api/crm")
     app.register_blueprint(tasks_bp, url_prefix="/api/tasks")
@@ -110,14 +103,12 @@ def create_app():
         return send_from_directory(upload_dir, path)
 
     return app
-    
+
+
 app = create_app()
 
 if __name__ == '__main__':
-    # Считываем порт, который дал Google Cloud. Если его нет — используем 8080.
     run_port = int(os.environ.get("PORT", 8080))
-    
-    # Передаем этот порт в socketio.run
     socketio.run(
         app,
         host='0.0.0.0', 
