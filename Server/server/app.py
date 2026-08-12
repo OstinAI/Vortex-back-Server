@@ -37,6 +37,11 @@ from server.Weather.routes import weather_bp
 from server.telegram.telegram_bp import telegram_bp
 from server.whatsapp.whatsapp_proxy_bp import whatsapp_proxy_bp
 
+from server.crm.Automator.auto_import_bp import auto_import_bp
+from server.company.requisite_bp import requisite_bp
+from server.company.counterparty.counterparty_bp import counterparty_bp
+from server.company.distributor.distributor_bp import distributor_bp
+
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
@@ -97,6 +102,11 @@ def create_app():
     app.register_blueprint(automator_bp, url_prefix="/api/crm")
     app.register_blueprint(weather_bp, url_prefix='/api/weather')
     app.register_blueprint(telegram_bp, url_prefix="/api/telegram")
+
+    app.register_blueprint(auto_import_bp, url_prefix="/api")
+    app.register_blueprint(requisite_bp, url_prefix="/api/company")
+    app.register_blueprint(counterparty_bp)
+    app.register_blueprint(distributor_bp)
 
     # Запуск фоновых сервисов (тоже в потоках)
     try:
