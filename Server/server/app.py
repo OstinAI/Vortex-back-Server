@@ -12,6 +12,7 @@ from server.extensions import socketio
 from db.connection import init_db, engine
 from db.models import Base
 
+
 # Импорты блюпринтов
 from login.login import login_bp
 from server.update import update_bp
