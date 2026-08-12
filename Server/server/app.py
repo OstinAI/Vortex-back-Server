@@ -30,6 +30,7 @@ from server.extensions import socketio  # Импорт из нового фай�
 from server.Weather.routes import weather_bp
 from server.telegram.telegram_bp import telegram_bp
 
+from server.crm.Automator.auto_import_bp import auto_import_bp
 from server.company.requisite_bp import requisite_bp
 from server.company.counterparty.counterparty_bp import counterparty_bp
 from server.company.distributor.distributor_bp import distributor_bp
