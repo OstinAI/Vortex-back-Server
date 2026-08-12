@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
+п»ї# -*- coding: utf-8 -*-
 """
-Модуль управления контрагентами компании
-Путь: server/company/counterparty/counterparty_bp.py
+РњРѕРґСѓР»СЊ СѓРїСЂР°РІР»РµРЅРёСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°РјРё РєРѕРјРїР°РЅРёРё
+РџСѓС‚СЊ: server/company/counterparty/counterparty_bp.py
 """
 
 from flask import Blueprint, request, jsonify
@@ -14,13 +14,13 @@ import time
 import hashlib
 from sqlalchemy import or_, and_
 
-# Импортируем модели из db.models (они должны быть там добавлены)
+# РРјРїРѕСЂС‚РёСЂСѓРµРј РјРѕРґРµР»Рё РёР· db.models (РѕРЅРё РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ С‚Р°Рј РґРѕР±Р°РІР»РµРЅС‹)
 from db.models import Counterparty, CounterpartyCustomField, CounterpartyPaymentField
 
 counterparty_bp = Blueprint("counterparty", __name__, url_prefix="/api/company/counterparty")
 
 # ============================================
-# НАСТРОЙКИ ШИФРОВАНИЯ
+# РќРђРЎРўР РћР™РљР РЁРР¤Р РћР’РђРќРРЇ
 # ============================================
 
 ENCRYPTED_FIELDS = [
@@ -40,7 +40,7 @@ def encrypt_field_value(key: str, value: str) -> str:
     try:
         return encrypt(value)
     except Exception as e:
-        print(f"[WARN] Ошибка шифрования {key}: {e}")
+        print(f"[WARN] РћС€РёР±РєР° С€РёС„СЂРѕРІР°РЅРёСЏ {key}: {e}")
         return value
 
 def decrypt_field_value(key: str, value: str) -> str:
@@ -53,17 +53,17 @@ def decrypt_field_value(key: str, value: str) -> str:
             return decrypt(value)
         return value
     except Exception as e:
-        print(f"[ERROR] Ошибка дешифрования {key}: {e}")
+        print(f"[ERROR] РћС€РёР±РєР° РґРµС€РёС„СЂРѕРІР°РЅРёСЏ {key}: {e}")
         return value
 
 
 # ============================================
-# API: ПОЛУЧИТЬ ВСЕХ КОНТРАГЕНТОВ
+# API: РџРћР›РЈР§РРўР¬ Р’РЎР•РҐ РљРћРќРўР РђР“Р•РќРўРћР’
 # ============================================
 @counterparty_bp.route("/list", methods=["GET"])
 @token_required
 def get_counterparties():
-    """Получить список всех контрагентов"""
+    """РџРѕР»СѓС‡РёС‚СЊ СЃРїРёСЃРѕРє РІСЃРµС… РєРѕРЅС‚СЂР°РіРµРЅС‚РѕРІ"""
     payload = request.user
     company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
     
@@ -79,19 +79,19 @@ def get_counterparties():
         
         result = []
         for cp in counterparties:
-            # Получаем кастомные поля
+            # РџРѕР»СѓС‡Р°РµРј РєР°СЃС‚РѕРјРЅС‹Рµ РїРѕР»СЏ
             custom_fields = session.query(CounterpartyCustomField).filter_by(
                 counterparty_id=cp.id,
                 company_id=company_id
             ).all()
             
-            # Получаем платежные реквизиты
+            # РџРѕР»СѓС‡Р°РµРј РїР»Р°С‚РµР¶РЅС‹Рµ СЂРµРєРІРёР·РёС‚С‹
             payment_fields = session.query(CounterpartyPaymentField).filter_by(
                 counterparty_id=cp.id,
                 company_id=company_id
             ).all()
             
-            # Формируем данные для ответа
+            # Р¤РѕСЂРјРёСЂСѓРµРј РґР°РЅРЅС‹Рµ РґР»СЏ РѕС‚РІРµС‚Р°
             result.append({
                 "id": cp.id,
                 "president": decrypt_field_value('president', cp.president or ""),
@@ -131,7 +131,7 @@ def get_counterparties():
         }), 200
         
     except Exception as e:
-        print(f"[ERROR] Ошибка получения контрагентов: {str(e)}")
+        print(f"[ERROR] РћС€РёР±РєР° РїРѕР»СѓС‡РµРЅРёСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚РѕРІ: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -140,12 +140,12 @@ def get_counterparties():
 
 
 # ============================================
-# API: ПОЛУЧИТЬ ОДНОГО КОНТРАГЕНТА
+# API: РџРћР›РЈР§РРўР¬ РћР”РќРћР“Рћ РљРћРќРўР РђР“Р•РќРўРђ
 # ============================================
 @counterparty_bp.route("/<int:counterparty_id>", methods=["GET"])
 @token_required
 def get_counterparty(counterparty_id):
-    """Получить данные одного контрагента"""
+    """РџРѕР»СѓС‡РёС‚СЊ РґР°РЅРЅС‹Рµ РѕРґРЅРѕРіРѕ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°"""
     payload = request.user
     company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
     
@@ -207,19 +207,19 @@ def get_counterparty(counterparty_id):
         return jsonify({"status": "ok", "data": result}), 200
         
     except Exception as e:
-        print(f"[ERROR] Ошибка получения контрагента: {str(e)}")
+        print(f"[ERROR] РћС€РёР±РєР° РїРѕР»СѓС‡РµРЅРёСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         session.close()
 
 
 # ============================================
-# API: СОЗДАТЬ КОНТРАГЕНТА
+# API: РЎРћР—Р”РђРўР¬ РљРћРќРўР РђР“Р•РќРўРђ
 # ============================================
 @counterparty_bp.route("/create", methods=["POST"])
 @token_required
 def create_counterparty():
-    """Создать нового контрагента"""
+    """РЎРѕР·РґР°С‚СЊ РЅРѕРІРѕРіРѕ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°"""
     payload = request.user
     company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
     
@@ -228,7 +228,7 @@ def create_counterparty():
     
     data = request.get_json(silent=True) or {}
     
-    # Обязательные поля
+    # РћР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ
     president = (data.get("president") or "").strip()
     organization = (data.get("organization") or "").strip()
     phone = (data.get("phone") or "").strip()
@@ -238,17 +238,17 @@ def create_counterparty():
     if not president or not organization or not phone or not email:
         return jsonify({
             "status": "error",
-            "message": "Обязательные поля: президент, организация, телефон, email"
+            "message": "РћР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ: РїСЂРµР·РёРґРµРЅС‚, РѕСЂРіР°РЅРёР·Р°С†РёСЏ, С‚РµР»РµС„РѕРЅ, email"
         }), 400
     
     session = get_session()
     try:
-        # Проверяем компанию
+        # РџСЂРѕРІРµСЂСЏРµРј РєРѕРјРїР°РЅРёСЋ
         company = session.query(Company).filter_by(id=company_id).first()
         if not company:
             return jsonify({"status": "error", "message": "Company not found"}), 404
         
-        # Создаем контрагента
+        # РЎРѕР·РґР°РµРј РєРѕРЅС‚СЂР°РіРµРЅС‚Р°
         now = int(time.time() * 1000)
         
         cp = Counterparty(
@@ -269,7 +269,7 @@ def create_counterparty():
         session.add(cp)
         session.flush()
         
-        # Сохраняем кастомные поля
+        # РЎРѕС…СЂР°РЅСЏРµРј РєР°СЃС‚РѕРјРЅС‹Рµ РїРѕР»СЏ
         custom_fields = data.get("custom_fields") or []
         for field in custom_fields:
             key = (field.get("key") or "").strip()
@@ -284,7 +284,7 @@ def create_counterparty():
                 )
                 session.add(cf)
         
-        # Сохраняем платежные реквизиты
+        # РЎРѕС…СЂР°РЅСЏРµРј РїР»Р°С‚РµР¶РЅС‹Рµ СЂРµРєРІРёР·РёС‚С‹
         payment_fields = data.get("payment_fields") or []
         for field in payment_fields:
             key = (field.get("key") or "").strip()
@@ -303,13 +303,13 @@ def create_counterparty():
         
         return jsonify({
             "status": "ok",
-            "message": "Контрагент создан",
+            "message": "РљРѕРЅС‚СЂР°РіРµРЅС‚ СЃРѕР·РґР°РЅ",
             "data": {"id": cp.id}
         }), 200
         
     except Exception as e:
         session.rollback()
-        print(f"[ERROR] Ошибка создания контрагента: {str(e)}")
+        print(f"[ERROR] РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -318,12 +318,12 @@ def create_counterparty():
 
 
 # ============================================
-# API: ОБНОВИТЬ КОНТРАГЕНТА
+# API: РћР‘РќРћР’РРўР¬ РљРћРќРўР РђР“Р•РќРўРђ
 # ============================================
 @counterparty_bp.route("/update/<int:counterparty_id>", methods=["POST"])
 @token_required
 def update_counterparty(counterparty_id):
-    """Обновить данные контрагента"""
+    """РћР±РЅРѕРІРёС‚СЊ РґР°РЅРЅС‹Рµ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°"""
     payload = request.user
     company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
     
@@ -344,7 +344,7 @@ def update_counterparty(counterparty_id):
         
         now = int(time.time() * 1000)
         
-        # Обновляем основные поля
+        # РћР±РЅРѕРІР»СЏРµРј РѕСЃРЅРѕРІРЅС‹Рµ РїРѕР»СЏ
         if "president" in data:
             cp.president = encrypt_field_value('president', (data["president"] or "").strip())
         if "organization" in data:
@@ -368,15 +368,15 @@ def update_counterparty(counterparty_id):
         
         cp.updated_ts_ms = now
         
-        # Обновляем кастомные поля (удаляем старые и создаем новые)
+        # РћР±РЅРѕРІР»СЏРµРј РєР°СЃС‚РѕРјРЅС‹Рµ РїРѕР»СЏ (СѓРґР°Р»СЏРµРј СЃС‚Р°СЂС‹Рµ Рё СЃРѕР·РґР°РµРј РЅРѕРІС‹Рµ)
         if "custom_fields" in data:
-            # Удаляем старые
+            # РЈРґР°Р»СЏРµРј СЃС‚Р°СЂС‹Рµ
             session.query(CounterpartyCustomField).filter_by(
                 counterparty_id=cp.id,
                 company_id=company_id
             ).delete()
             
-            # Создаем новые
+            # РЎРѕР·РґР°РµРј РЅРѕРІС‹Рµ
             for field in data["custom_fields"]:
                 key = (field.get("key") or "").strip()
                 value = (field.get("value") or "").strip()
@@ -390,15 +390,15 @@ def update_counterparty(counterparty_id):
                     )
                     session.add(cf)
         
-        # Обновляем платежные реквизиты
+        # РћР±РЅРѕРІР»СЏРµРј РїР»Р°С‚РµР¶РЅС‹Рµ СЂРµРєРІРёР·РёС‚С‹
         if "payment_fields" in data:
-            # Удаляем старые
+            # РЈРґР°Р»СЏРµРј СЃС‚Р°СЂС‹Рµ
             session.query(CounterpartyPaymentField).filter_by(
                 counterparty_id=cp.id,
                 company_id=company_id
             ).delete()
             
-            # Создаем новые
+            # РЎРѕР·РґР°РµРј РЅРѕРІС‹Рµ
             for field in data["payment_fields"]:
                 key = (field.get("key") or "").strip()
                 value = (field.get("value") or "").strip()
@@ -416,12 +416,12 @@ def update_counterparty(counterparty_id):
         
         return jsonify({
             "status": "ok",
-            "message": "Контрагент обновлен"
+            "message": "РљРѕРЅС‚СЂР°РіРµРЅС‚ РѕР±РЅРѕРІР»РµРЅ"
         }), 200
         
     except Exception as e:
         session.rollback()
-        print(f"[ERROR] Ошибка обновления контрагента: {str(e)}")
+        print(f"[ERROR] РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -430,12 +430,12 @@ def update_counterparty(counterparty_id):
 
 
 # ============================================
-# API: УДАЛИТЬ КОНТРАГЕНТА
+# API: РЈР”РђР›РРўР¬ РљРћРќРўР РђР“Р•РќРўРђ
 # ============================================
 @counterparty_bp.route("/delete/<int:counterparty_id>", methods=["DELETE"])
 @token_required
 def delete_counterparty(counterparty_id):
-    """Удалить контрагента (мягкое удаление)"""
+    """РЈРґР°Р»РёС‚СЊ РєРѕРЅС‚СЂР°РіРµРЅС‚Р° (РјСЏРіРєРѕРµ СѓРґР°Р»РµРЅРёРµ)"""
     payload = request.user
     company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
     
@@ -452,37 +452,37 @@ def delete_counterparty(counterparty_id):
         if not cp:
             return jsonify({"status": "error", "message": "Counterparty not found"}), 404
         
-        # Мягкое удаление
+        # РњСЏРіРєРѕРµ СѓРґР°Р»РµРЅРёРµ
         cp.is_active = False
         cp.updated_ts_ms = int(time.time() * 1000)
         session.commit()
         
         return jsonify({
             "status": "ok",
-            "message": "Контрагент удален"
+            "message": "РљРѕРЅС‚СЂР°РіРµРЅС‚ СѓРґР°Р»РµРЅ"
         }), 200
         
     except Exception as e:
         session.rollback()
-        print(f"[ERROR] Ошибка удаления контрагента: {str(e)}")
+        print(f"[ERROR] РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         session.close()
 
 
 # ============================================
-# API: ПОЛУЧИТЬ ТИПЫ КОНТРАГЕНТОВ
+# API: РџРћР›РЈР§РРўР¬ РўРРџР« РљРћРќРўР РђР“Р•РќРўРћР’
 # ============================================
 @counterparty_bp.route("/types", methods=["GET"])
 @token_required
 def get_counterparty_types():
-    """Получить список доступных типов контрагентов"""
+    """РџРѕР»СѓС‡РёС‚СЊ СЃРїРёСЃРѕРє РґРѕСЃС‚СѓРїРЅС‹С… С‚РёРїРѕРІ РєРѕРЅС‚СЂР°РіРµРЅС‚РѕРІ"""
     return jsonify({
         "status": "ok",
         "data": [
-            {"value": "supplier", "label": "Поставщик"},
-            {"value": "partner", "label": "Партнер"},
-            {"value": "distributor", "label": "Дистрибьютор"},
-            {"value": "other", "label": "Свой"}
+            {"value": "supplier", "label": "РџРѕСЃС‚Р°РІС‰РёРє"},
+            {"value": "partner", "label": "РџР°СЂС‚РЅРµСЂ"},
+            {"value": "distributor", "label": "Р”РёСЃС‚СЂРёР±СЊСЋС‚РѕСЂ"},
+            {"value": "other", "label": "РЎРІРѕР№"}
         ]
     }), 200
