@@ -53,6 +53,15 @@ def create_app():
 
     init_db()
 
+    from db.models import Base
+    from db.connection import engine
+    
+    def create_tables():
+        Base.metadata.create_all(bind=engine)
+        print("✅ Tables created successfully")
+    
+    create_tables()
+
     # ✅ ОДИНАКОВЫЙ JWT СЕКРЕТ С WA-СЕРВЕРОМ
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "CHANGE_ME")
     app.config["JWT_ALGORITHM"] = os.getenv("JWT_ALGORITHM", "HS256")
