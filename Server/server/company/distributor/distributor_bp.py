@@ -460,6 +460,269 @@ def get_distributors():
 
 
 # ============================================
+# API: ПОЛУЧИТЬ ВСЕ ЗАЯВКИ (ДЛЯ АДМИНА/СТРАНИЦЫ ЗАЯВОК)
+# ============================================
+@distributor_bp.route("/applications/all", methods=["GET"])
+@token_required
+def get_all_applications():
+    """Получить все заявки с возможностью фильтрации по статусу"""
+    payload = request.user
+    company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
+    role = str(payload.get("role") or "")
+
+    session = get_session()
+    try:
+        from db.models import DistributorApplication, Distributor, DistributorCompanyLink
+
+        company = session.query(Company).filter_by(id=company_id).first()
+        if not company:
+            return jsonify({"status": "error", "message": "Company not found"}), 404
+
+        is_vortex = "vortex" in company.name.lower()
+        is_admin = role in ("Integrator", "Admin")
+
+        # Если Vortex или Admin - показываем ВСЕ заявки
+        if is_vortex or is_admin:
+            applications = session.query(DistributorApplication).order_by(
+                DistributorApplication.created_ts_ms.desc()
+            ).all()
+            print(f"[DEBUG] Vortex/Admin: найдено заявок: {len(applications)}")
+        else:
+            # Иначе показываем только заявки этой компании
+            applications = session.query(DistributorApplication).filter_by(
+                company_id=company_id
+            ).order_by(
+                DistributorApplication.created_ts_ms.desc()
+            ).all()
+            print(f"[DEBUG] Обычная компания {company_id}: найдено заявок: {len(applications)}")
+
+        result = []
+        for app in applications:
+            applicant = session.query(Company).filter_by(id=app.company_id).first()
+            
+            # Получаем количество компаний привязанных к этому дистрибьютору (если одобрен)
+            linked_count = 0
+            if app.status == 'approved':
+                distributor = session.query(Distributor).filter_by(
+                    application_id=app.id
+                ).first()
+                if distributor:
+                    linked_count = session.query(DistributorCompanyLink).filter_by(
+                        distributor_id=distributor.id,
+                        is_active=True
+                    ).count()
+
+            result.append({
+                "id": app.id,
+                "company_id": app.company_id,
+                "company_name": decrypt_field_value('company_name', app.company_name),
+                "bin": decrypt_field_value('bin', app.bin),
+                "president": decrypt_field_value('president', app.president),
+                "phone": decrypt_field_value('phone', app.phone),
+                "email": decrypt_field_value('email', app.email),
+                "address": decrypt_field_value('address', app.address),
+                "actual_address": decrypt_field_value('actual_address', app.actual_address or ""),
+                "website": decrypt_field_value('website', app.website or ""),
+                "ownership_form": decrypt_field_value('ownership_form', app.ownership_form or ""),
+                "paypal_email": decrypt_field_value('paypal_email', app.paypal_email),
+                "notes": decrypt_field_value('notes', app.notes or ""),
+                "status": app.status,
+                "applicant_name": applicant.name if applicant else "",
+                "created_ts_ms": app.created_ts_ms,
+                "review_comment": decrypt_field_value('review_comment', app.review_comment or ""),
+                "linked_count": linked_count
+            })
+
+        print(f"[DEBUG] Возвращаем {len(result)} заявок")
+        return jsonify({
+            "status": "ok",
+            "data": result,
+            "total": len(result)
+        }), 200
+
+    except Exception as e:
+        print(f"[ERROR] Ошибка получения заявок: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        session.close()
+
+# ============================================
+# API: ОТОЗВАТЬ ОДОБРЕНИЕ ЗАЯВКИ
+# ============================================
+@distributor_bp.route("/application/revoke/<int:application_id>", methods=["POST"])
+@token_required
+def revoke_application(application_id):
+    """Отозвать одобрение заявки (вернуть в статус pending)"""
+    payload = request.user
+    company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
+    user_id = int(payload.get("user_id") or 0) if payload.get("user_id") else None
+    role = str(payload.get("role") or "")
+
+    data = request.get_json(silent=True) or {}
+    comment = data.get('comment', '').strip()
+
+    session = get_session()
+    try:
+        from db.models import DistributorApplication, Distributor, DistributorCompanyLink
+
+        company = session.query(Company).filter_by(id=company_id).first()
+        if not company:
+            return jsonify({"status": "error", "message": "Company not found"}), 404
+
+        is_vortex = "vortex" in company.name.lower()
+        is_admin = role in ("Integrator", "Admin")
+
+        if not is_vortex and not is_admin:
+            return jsonify({"status": "error", "message": "ACCESS_DENIED"}), 403
+
+        application = session.query(DistributorApplication).filter_by(
+            id=application_id,
+            status='approved'
+        ).first()
+
+        if not application:
+            return jsonify({"status": "error", "message": "Заявка не найдена или не одобрена"}), 404
+
+        # Находим дистрибьютора
+        distributor = session.query(Distributor).filter_by(
+            application_id=application_id
+        ).first()
+
+        now = int(time.time() * 1000)
+
+        if distributor:
+            # Отключаем все активные связи этого дистрибьютора
+            links = session.query(DistributorCompanyLink).filter_by(
+                distributor_id=distributor.id,
+                is_active=True
+            ).all()
+            
+            for link in links:
+                link.is_active = False
+                # Обновляем статистику
+                comp = session.query(Company).filter_by(id=link.company_id).first()
+                if comp:
+                    pass  # ничего не делаем с компанией
+            
+            # Удаляем дистрибьютора или деактивируем
+            distributor.is_active = False
+            distributor.updated_ts_ms = now
+
+        # Возвращаем заявку в статус pending
+        application.status = 'pending'
+        application.reviewed_by_user_id = user_id
+        application.reviewed_ts_ms = now
+        application.review_comment = encrypt_field_value('review_comment', comment or "Одобрение отозвано")
+        application.updated_ts_ms = now
+
+        session.commit()
+
+        return jsonify({
+            "status": "ok",
+            "message": "Одобрение отозвано, заявка возвращена в ожидание",
+            "data": {
+                "application_id": application.id,
+                "status": application.status
+            }
+        }), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"[ERROR] Ошибка отзыва одобрения: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        session.close()
+        
+        
+# ============================================
+# API: ПОЛУЧИТЬ ДЕТАЛЬНУЮ ИНФОРМАЦИЮ О ДИСТРИБЬЮТОРЕ
+# ============================================
+@distributor_bp.route("/details/<int:distributor_id>", methods=["GET"])
+@token_required
+def get_distributor_details(distributor_id):
+    """Получить детальную информацию о дистрибьюторе и его компаниях"""
+    payload = request.user
+    company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
+    role = str(payload.get("role") or "")
+
+    session = get_session()
+    try:
+        from db.models import Distributor, DistributorCompanyLink, Company
+
+        # Проверяем права
+        company = session.query(Company).filter_by(id=company_id).first()
+        if not company:
+            return jsonify({"status": "error", "message": "Company not found"}), 404
+
+        is_vortex = "vortex" in company.name.lower()
+        is_admin = role in ("Integrator", "Admin")
+
+        if not is_vortex and not is_admin:
+            return jsonify({"status": "error", "message": "ACCESS_DENIED"}), 403
+
+        distributor = session.query(Distributor).filter_by(
+            id=distributor_id,
+            is_active=True
+        ).first()
+
+        if not distributor:
+            return jsonify({"status": "error", "message": "Distributor not found"}), 404
+
+        # Получаем привязанные компании
+        links = session.query(DistributorCompanyLink).filter_by(
+            distributor_id=distributor.id,
+            is_active=True
+        ).all()
+
+        linked_companies = []
+        for link in links:
+            comp = session.query(Company).filter_by(id=link.company_id).first()
+            if comp:
+                linked_companies.append({
+                    "id": comp.id,
+                    "name": comp.name,
+                    "bin": getattr(comp, 'bin', '') or '',
+                    "phone": getattr(comp, 'phone', '') or '',
+                    "address": getattr(comp, 'address', '') or '',
+                    "linked_ts_ms": link.linked_ts_ms
+                })
+
+        result = {
+            "id": distributor.id,
+            "company_id": distributor.company_id,
+            "company_name": decrypt_field_value('company_name', distributor.company_name),
+            "bin": decrypt_field_value('bin', distributor.bin),
+            "president": decrypt_field_value('president', distributor.president),
+            "phone": decrypt_field_value('phone', distributor.phone),
+            "email": decrypt_field_value('email', distributor.email),
+            "address": decrypt_field_value('address', distributor.address),
+            "actual_address": decrypt_field_value('actual_address', distributor.actual_address or ""),
+            "website": decrypt_field_value('website', distributor.website or ""),
+            "ownership_form": decrypt_field_value('ownership_form', distributor.ownership_form or ""),
+            "paypal_email": decrypt_field_value('paypal_email', distributor.paypal_email),
+            "total_clients": distributor.total_clients or 0,
+            "created_ts_ms": distributor.created_ts_ms,
+            "linked_companies": linked_companies
+        }
+
+        return jsonify({
+            "status": "ok",
+            "data": result
+        }), 200
+
+    except Exception as e:
+        print(f"[ERROR] Ошибка получения деталей дистрибьютора: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        session.close()
+        
+        
+        
+# ============================================
 # API: ПРИВЯЗАТЬ КОМПАНИЮ К ДИСТРИБЬЮТОРУ
 # ============================================
 @distributor_bp.route("/link", methods=["POST"])
