@@ -410,7 +410,7 @@ def get_distributors():
 
     session = get_session()
     try:
-        from db.models import Distributor, DistributorCompanyLink
+        from db.models import Distributor, DistributorCompanyLink, Company
 
         # Получаем всех активных дистрибьюторов
         distributors = session.query(Distributor).filter_by(
@@ -425,7 +425,17 @@ def get_distributors():
 
         result = []
         for d in distributors:
-            # Проверяем, привязана ли компания к этому дистрибьютору
+            # ✅ Получаем актуальные данные компании
+            company = session.query(Company).filter_by(id=d.company_id).first()
+            
+            # Если компания существует и у нее другое название - синхронизируем
+            if company and company.name != d.company_name:
+                # Обновляем название дистрибьютора
+                d.company_name = encrypt_field_value('company_name', company.name)
+                d.updated_ts_ms = int(time.time() * 1000)
+                session.commit()
+                print(f"[SYNC] Обновлено название дистрибьютора {d.id}: {company.name}")
+
             is_linked = False
             if existing_link and existing_link.distributor_id == d.id:
                 is_linked = True
@@ -454,6 +464,8 @@ def get_distributors():
 
     except Exception as e:
         print(f"[ERROR] Ошибка получения списка дистрибьюторов: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         session.close()
@@ -472,7 +484,7 @@ def get_all_applications():
 
     session = get_session()
     try:
-        from db.models import DistributorApplication, Distributor, DistributorCompanyLink
+        from db.models import DistributorApplication, Distributor, DistributorCompanyLink, Company
 
         company = session.query(Company).filter_by(id=company_id).first()
         if not company:
@@ -498,7 +510,11 @@ def get_all_applications():
 
         result = []
         for app in applications:
+            # ✅ Получаем актуальные данные компании
             applicant = session.query(Company).filter_by(id=app.company_id).first()
+            
+            # ✅ Используем актуальное название из таблицы companies, если компания существует
+            actual_company_name = applicant.name if applicant else decrypt_field_value('company_name', app.company_name)
             
             # Получаем количество компаний привязанных к этому дистрибьютору (если одобрен)
             linked_count = 0
@@ -515,7 +531,8 @@ def get_all_applications():
             result.append({
                 "id": app.id,
                 "company_id": app.company_id,
-                "company_name": decrypt_field_value('company_name', app.company_name),
+                # ✅ Используем актуальное название
+                "company_name": actual_company_name,
                 "bin": decrypt_field_value('bin', app.bin),
                 "president": decrypt_field_value('president', app.president),
                 "phone": decrypt_field_value('phone', app.phone),
@@ -929,6 +946,83 @@ def get_distributor_stats():
 
     except Exception as e:
         print(f"[ERROR] Ошибка получения статистики: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        session.close()
+        
+# ============================================
+# ФУНКЦИЯ СИНХРОНИЗАЦИИ ДАННЫХ ДИСТРИБЬЮТОРА
+# ============================================
+def sync_distributor_data(company_id: int, session):
+    """Синхронизирует данные компании с таблицей дистрибьюторов"""
+    try:
+        from db.models import Distributor, Company
+        
+        # Проверяем, является ли компания дистрибьютором
+        distributor = session.query(Distributor).filter_by(
+            company_id=company_id,
+            is_active=True
+        ).first()
+        
+        if not distributor:
+            return
+        
+        # Получаем актуальные данные компании
+        company = session.query(Company).filter_by(id=company_id).first()
+        if not company:
+            return
+        
+        # Обновляем название дистрибьютора
+        if company.name != distributor.company_name:
+            # Обновляем название (с шифрованием)
+            distributor.company_name = encrypt_field_value('company_name', company.name)
+            distributor.updated_ts_ms = int(time.time() * 1000)
+            
+            # Также обновляем другие поля, если они изменились
+            if company.bin:
+                distributor.bin = encrypt_field_value('bin', company.bin or '')
+            if company.phone:
+                distributor.phone = encrypt_field_value('phone', company.phone or '')
+            if company.president:
+                distributor.president = encrypt_field_value('president', company.president or '')
+            if company.address:
+                distributor.address = encrypt_field_value('address', company.address or '')
+            if company.website:
+                distributor.website = encrypt_field_value('website', company.website or '')
+            
+            print(f"[SYNC] Обновлены данные дистрибьютора ID={distributor.id}: {company.name}")
+            session.commit()
+            
+    except Exception as e:
+        print(f"[SYNC] Ошибка синхронизации дистрибьютора: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+# ============================================
+# API: СИНХРОНИЗИРОВАТЬ ДАННЫЕ ДИСТРИБЬЮТОРА
+# ============================================
+@distributor_bp.route("/sync", methods=["POST"])
+@token_required
+def sync_distributor():
+    """Синхронизировать данные компании с дистрибьютором"""
+    payload = request.user
+    company_id = int(payload.get("companyId") or payload.get("company_id") or 0)
+    
+    if company_id <= 0:
+        return jsonify({"status": "error", "message": "Invalid company"}), 400
+    
+    session = get_session()
+    try:
+        sync_distributor_data(company_id, session)
+        
+        return jsonify({
+            "status": "ok",
+            "message": "Данные дистрибьютора синхронизированы"
+        }), 200
+        
+    except Exception as e:
+        session.rollback()
+        print(f"[ERROR] Ошибка синхронизации: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         session.close()

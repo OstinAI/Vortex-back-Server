@@ -5,6 +5,7 @@ from db.connection import get_session
 from db.models import Company, CompanyProfileField, User, StoredFile
 from utils.crypto import encrypt, decrypt
 import re
+import time
 
 requisite_bp = Blueprint("requisite", __name__)
 
@@ -197,10 +198,13 @@ def update_company_requisites():
     
     session = get_session()
     try:
+        from db.models import DistributorApplication
+        
         company = session.query(Company).filter_by(id=company_id).first()
         if not company:
             return jsonify({"status": "error", "message": "Company not found"}), 404
         
+        # Обновляем поля компании
         fields_to_update = [
             'name', 'bin', 'phone', 'website', 'address', 'slogan',
             'president', 'postal_address', 'company_email', 'president_email',
@@ -214,25 +218,58 @@ def update_company_requisites():
         for field in fields_to_update:
             if field in data:
                 value = data[field]
-                # ✅ Шифруем чувствительные поля
                 if should_encrypt(field):
                     value = encrypt_field_value(field, value)
                 setattr(company, field, value)
         
         # Обработка дат
+        from datetime import datetime
         if 'reg_date' in data:
-            from datetime import datetime
             company.reg_date = datetime.strptime(data['reg_date'], '%Y-%m-%d').date() if data['reg_date'] else None
-        
         if 'foundation_date' in data:
-            from datetime import datetime
             company.foundation_date = datetime.strptime(data['foundation_date'], '%Y-%m-%d').date() if data['foundation_date'] else None
-        
         if 'license_date' in data:
-            from datetime import datetime
             company.license_date = datetime.strptime(data['license_date'], '%Y-%m-%d').date() if data['license_date'] else None
         
         session.commit()
+        
+        # ✅ Обновляем заявки этой компании (если есть активные)
+        try:
+            # Обновляем название в заявках, которые в статусе pending
+            pending_applications = session.query(DistributorApplication).filter_by(
+                company_id=company_id,
+                status='pending'
+            ).all()
+            
+            for app in pending_applications:
+                app.company_name = encrypt_field_value('company_name', company.name)
+                app.updated_ts_ms = int(time.time() * 1000)
+                print(f"[REQUISITE] Обновлена заявка {app.id}: название {company.name}")
+            
+            # Также обновляем одобренные заявки (если название изменилось)
+            approved_applications = session.query(DistributorApplication).filter_by(
+                company_id=company_id,
+                status='approved'
+            ).all()
+            
+            for app in approved_applications:
+                app.company_name = encrypt_field_value('company_name', company.name)
+                app.updated_ts_ms = int(time.time() * 1000)
+                print(f"[REQUISITE] Обновлена одобренная заявка {app.id}: название {company.name}")
+            
+            session.commit()
+            
+        except Exception as e:
+            print(f"[REQUISITE] Ошибка обновления заявок: {str(e)}")
+            # Не прерываем выполнение
+        
+        # ✅ Синхронизация с дистрибьютором
+        try:
+            from server.company.distributor.distributor_bp import sync_distributor_data
+            sync_distributor_data(company_id, session)
+            print(f"[REQUISITE] Дистрибьютор синхронизирован после обновления компании {company_id}")
+        except Exception as e:
+            print(f"[REQUISITE] Ошибка синхронизации дистрибьютора: {str(e)}")
         
         return jsonify({
             "status": "ok",
@@ -241,6 +278,9 @@ def update_company_requisites():
         
     except Exception as e:
         session.rollback()
+        print(f"[ERROR] Ошибка обновления: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         session.close()
