@@ -8,7 +8,7 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from server.extensions import socketio
 
-# ✅ Импортируем модели ДО создания приложения
+# # ✅ Импортируем модели ДО создания приложения111
 from db.connection import init_db, engine
 from db.models import Base
 
@@ -41,11 +41,13 @@ from server.crm.Automator.auto_import_bp import auto_import_bp
 from server.company.requisite_bp import requisite_bp
 from server.company.counterparty.counterparty_bp import counterparty_bp
 from server.company.distributor.distributor_bp import distributor_bp
+from server.company.list_of_companies.list_of_companies import list_of_companies_bp
 
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
 )
+
 
 
 def create_tables_async(app):
@@ -107,6 +109,7 @@ def create_app():
     app.register_blueprint(requisite_bp, url_prefix="/api/company")
     app.register_blueprint(counterparty_bp)
     app.register_blueprint(distributor_bp)
+    app.register_blueprint(list_of_companies_bp)
 
     # Запуск фоновых сервисов (тоже в потоках)
     try:
