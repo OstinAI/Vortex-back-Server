@@ -41,6 +41,7 @@ from server.crm.Automator.auto_import_bp import auto_import_bp
 from server.company.requisite_bp import requisite_bp
 from server.company.counterparty.counterparty_bp import counterparty_bp
 from server.company.distributor.distributor_bp import distributor_bp
+from server.company.list_of_companies.list_of_companies import list_of_companies_bp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -107,6 +108,7 @@ def create_app():
     app.register_blueprint(requisite_bp, url_prefix="/api/company")
     app.register_blueprint(counterparty_bp)
     app.register_blueprint(distributor_bp)
+    app.register_blueprint(list_of_companies_bp)
 
     # Запуск фоновых сервисов (тоже в потоках)
     try:
