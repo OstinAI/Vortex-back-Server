@@ -8,7 +8,7 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from server.extensions import socketio
 
-# # ✅ Импортируем модели ДО создания приложения111
+# # ✅ Импортируем модели ДО создания приложения
 from db.connection import init_db, engine
 from db.models import Base
 
