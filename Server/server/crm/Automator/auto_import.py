@@ -195,65 +195,55 @@ def is_automation_enabled() -> bool:
 
 
 def get_or_create_crm_field(session, vortex_company_id, field_key, field_title, field_type='text', is_system_admin=False):
-    """
-    Получить существующее поле CRM или создать новое
+    # Определяем ключ для поиска
+    if is_system_admin:
+        search_key = f"admin_{field_key}"
+        # Также пробуем найти без префикса (на случай если поле уже существует)
+        search_key_alt = field_key
+    else:
+        search_key = field_key
+        search_key_alt = None
     
-    Args:
-        session: Сессия БД
-        vortex_company_id: ID компании Vortex
-        field_key: Ключ поля
-        field_title: Название поля
-        field_type: Тип поля
-        is_system_admin: Является ли поле системным административным
-    """
-    # Ищем по ключу
+    # Ищем по ключу (с префиксом)
     field = session.query(CRMFieldDefinition).filter_by(
         company_id=vortex_company_id,
         scope_type='company',
         scope_id=0,
-        key=field_key,
+        key=search_key,
         is_enabled=True
     ).first()
     
     if field:
         return field
+    
+    # Если не нашли с префиксом, ищем без префикса
+    if search_key_alt:
+        field = session.query(CRMFieldDefinition).filter_by(
+            company_id=vortex_company_id,
+            scope_type='company',
+            scope_id=0,
+            key=search_key_alt,
+            is_enabled=True
+        ).first()
+        if field:
+            return field
     
     # Ищем по названию
     field = session.query(CRMFieldDefinition).filter_by(
         company_id=vortex_company_id,
         scope_type='company',
         scope_id=0,
-        title=field_title,
+        title=field_title if not is_system_admin else f"🔐 {field_title}",
         is_enabled=True
     ).first()
     
     if field:
         return field
     
-    # Создаем новое поле
-    if is_system_admin:
-        # 🔐 ДОБАВЛЯЕМ ЭМОДЗИ В НАЗВАНИЕ ПОЛЯ ДЛЯ ВИЗУАЛЬНОЙ ПОМЕТКИ
-        display_title = f"🔐 {field_title}"
-        display_key = f"admin_{field_key}"
-    else:
-        display_title = field_title
-        display_key = field_key
-    
-    new_field = CRMFieldDefinition(
-        company_id=vortex_company_id,
-        scope_type='company',
-        scope_id=0,
-        key=display_key,
-        title=display_title,  # ← Здесь будет 🔐 для системных полей
-        type=field_type,
-        required=False,
-        order_index=0,
-        is_enabled=True,
-        created_ts_ms=_now_ms()
-    )
+    # Создаем новое поле только если ничего не найдено
+    new_field = CRMFieldDefinition(...)
     session.add(new_field)
     session.flush()
-    print(f'[AUTO_IMPORT] Создано поле: {display_title} (key={display_key})')
     return new_field
 
 
